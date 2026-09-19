@@ -12,12 +12,15 @@ import {
 import { buildJevRequest, noulAnswer, parseJevResponse } from "../vendor/fast-jev/request.js";
 import { collectToolCalls, fitState } from "../vendor/fast-jev/state.js";
 import type {
+  CallDecision,
   CompactResult,
   JevAsker,
   JevQuestions,
   JevResponse,
   JevState,
   Message,
+  ToolCall,
+  ToolUse,
 } from "../vendor/fast-jev/types.js";
 import {
   computeFileLists,
@@ -353,10 +356,118 @@ async function askQuestionsBatch(
   );
 }
 
+function tombstoneResultText(
+  text: string,
+  isError: boolean,
+  headChars: number,
+  errorTailChars: number,
+): string {
+  if (
+    isError &&
+    errorTailChars > 0 &&
+    text.length > errorTailChars + 120
+  ) {
+    return `[fast-jev-compaction kept the last ${errorTailChars} of ${text.length} chars of this tool result (error); re-run the tool for the full log]\n${text.slice(-errorTailChars)}`;
+  }
+  if (text.length <= headChars + 120) return text;
+  const head = headChars > 0 ? `${text.slice(0, headChars)}\n` : "";
+  return `${head}[fast-jev-compaction truncated ${text.length - headChars} chars of this tool result${isError ? " (error)" : ""}; re-run the tool if needed]`;
+}
+
 /**
- * The vendored `compact` pipeline, with one extension point: when
+ * Mirrors the vendored `applyDecisions` exactly, plus tuned removals:
+ * calls marked for tombstoning keep their one-line record (tool + input)
+ * while their result collapses to a note; failing results keep their tail
+ * when `errorTailChars` is set. With no tombstones and zero tail, output is
+ * identical to the vendored function.
+ */
+export function applyDecisionsWithTuning(
+  messages: readonly Message[],
+  decisions: readonly CallDecision[],
+  calls: readonly ToolCall[],
+  options: { headChars: number; tombstone: ReadonlySet<string>; errorTailChars: number },
+): Message[] {
+  const { headChars, tombstone, errorTailChars } = options;
+  const byId = new Map(calls.map((call) => [call.id, call]));
+  const actions = new Map<string, CallDecision["action"]>();
+  for (const decision of decisions) {
+    const call = byId.get(decision.id);
+    if (call && decision.action !== "keep") actions.set(call.tool_use_id, decision.action);
+  }
+  const resultText = (text: string, isError: boolean, action: CallDecision["action"], id: string): string => {
+    const isTombstoned = action === "drop_call" && tombstone.has(id);
+    if (action === "drop_result" || isTombstoned) {
+      return tombstoneResultText(text, isError, headChars, isTombstoned ? errorTailChars : 0);
+    }
+    return text;
+  };
+  const kept: Message[] = [];
+  for (const message of messages) {
+    const touched =
+      message.toolUses.some((tool) => actions.has(tool.tool_use_id)) ||
+      (message.toolResults ?? []).some((result) => actions.has(result.tool_use_id));
+    if (!touched) {
+      kept.push(message);
+      continue;
+    }
+    const toolUses = message.toolUses
+      .filter((tool) => actions.get(tool.tool_use_id) !== "drop_call" || tombstone.has(tool.tool_use_id))
+      .map((tool) => {
+        const action = actions.get(tool.tool_use_id);
+        if (action !== "drop_result" && !(action === "drop_call" && tombstone.has(tool.tool_use_id))) return tool;
+        const text = resultText(tool.text ?? "", tool.isError ?? false, action ?? "drop_result", tool.tool_use_id);
+        if ((tool.text ?? "") === text) return tool;
+        const copy: ToolUse = {
+          tool_use_id: tool.tool_use_id,
+          tool: tool.tool,
+          input: tool.input,
+          text,
+        };
+        if (tool.isError) copy.isError = true;
+        return copy;
+      });
+    const toolResults = (message.toolResults ?? [])
+      .filter((result) => actions.get(result.tool_use_id) !== "drop_call" || tombstone.has(result.tool_use_id))
+      .map((result) => {
+        const action = actions.get(result.tool_use_id);
+        if (action !== "drop_result" && !(action === "drop_call" && tombstone.has(result.tool_use_id))) return result;
+        const text = resultText(result.text, result.isError ?? false, action ?? "drop_result", result.tool_use_id);
+        return text === result.text
+          ? result
+          : {
+              tool_use_id: result.tool_use_id,
+              text,
+              isError: result.isError,
+            };
+      });
+    if (
+      !message.toolUses.some(
+        (tool) => actions.get(tool.tool_use_id) === "drop_call" && !tombstone.has(tool.tool_use_id),
+      ) &&
+      !(message.toolResults ?? []).some(
+        (result) => actions.get(result.tool_use_id) === "drop_call" && !tombstone.has(result.tool_use_id),
+      ) &&
+      toolUses.every((tool, index) => tool === message.toolUses[index]) &&
+      toolResults.every((result, index) => result === message.toolResults?.[index])
+    ) {
+      kept.push(message);
+      continue;
+    }
+    if (message.text.trim().length === 0 && toolUses.length === 0 && toolResults.length === 0) {
+      continue;
+    }
+    const rebuilt: Message = { role: message.role, text: message.text, toolUses };
+    if (toolResults.length > 0) rebuilt.toolResults = toolResults;
+    kept.push(rebuilt);
+  }
+  return kept;
+}
+
+/**
+ * The vendored `compact` pipeline, with two extension points: when
  * `preserveCallInputs` is on, calls Jev voted to drop entirely keep a
- * one-line record (tool + input) and only lose the result. Everything else —
+ * one-line record (tool + input) and only lose the result (failing results
+ * keep their tail when `preserveErrorTails` is set). Everything else —
  * fitting, batching, decisions, stats — mirrors the vendored loop exactly.
  */
 async function compactWithTuning(
@@ -364,6 +475,7 @@ async function compactWithTuning(
   asker: JevAsker,
   options: Parameters<typeof resolveOptions>[0],
   preserveCallInputs: boolean,
+  errorTailChars: number,
 ): Promise<CompactResult> {
   const started = Date.now();
   const resolved = resolveOptions(options);
@@ -387,17 +499,21 @@ async function compactWithTuning(
     }
   }
 
-  let decisions = calls.map((call) =>
+  const decisions = calls.map((call) =>
     decideCall(call, answers.get(call.id) ?? { keepCall: 1, keepResult: 1 }, resolved),
   );
-  if (preserveCallInputs) {
-    decisions = decisions.map((decision) =>
-      decision.action === "drop_call"
-        ? { ...decision, action: "drop_result" as const, reason: "result_dropped" as const }
-        : decision,
-    );
-  }
-  const kept = applyDecisions(messages, decisions, calls, resolved.truncateHeadChars);
+  const tombstone = new Set<string>(
+    preserveCallInputs
+      ? decisions.filter((d) => d.action === "drop_call").map((d) => calls.find((c) => c.id === d.id)?.tool_use_id ?? "")
+      : [],
+  );
+  tombstone.delete("");
+  const kept = applyDecisionsWithTuning(messages, decisions, calls, {
+    headChars: resolved.truncateHeadChars,
+    tombstone,
+    errorTailChars: errorTailChars,
+  });
+  const tombstonedCount = [...tombstone].length;
   const count = (reason: (typeof decisions)[number]["reason"]) =>
     decisions.filter((decision) => decision.reason === reason).length;
   return {
@@ -410,8 +526,8 @@ async function compactWithTuning(
       charsAfter: kept.reduce((sum, message) => sum + messageChars(message), 0),
       calls: calls.length,
       kept: count("kept"),
-      resultsDropped: count("result_dropped"),
-      callsDropped: count("call_dropped"),
+      resultsDropped: count("result_dropped") + tombstonedCount,
+      callsDropped: count("call_dropped") - tombstonedCount,
       pinned: count("pinned"),
       stateTokens: fitted.tokens,
       stateStage: fitted.stage,
@@ -455,6 +571,7 @@ export async function runFastJevCompaction(run: CompactionRun): Promise<Compacti
     asker,
     options,
     run.config.preserveCallInputs === true,
+    finite(run.config.preserveErrorTails, 0),
   );
   void reductionRatio;
 

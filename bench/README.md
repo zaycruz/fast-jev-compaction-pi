@@ -37,27 +37,27 @@ the real-Jev arm. Results land in `bench/results-<ts>.json`.
 
 ## Results (2026-09-18, real typesafe-ai/jev via the gateway, glm-5.3-flash as the session model)
 
-Three fast-jev variants matter: **pure** (Jev decisions untouched) and
-**tuned** (`preserveCallInputs: true` — calls Jev voted to drop keep a
-one-line record of tool + input, only the result goes). Built-in numbers are
-from the same runs; the large built-in cell in the tuned run failed
-(summarizer hit its max generation length; pi rejects length-stopped
-summaries — the scored path cannot fail that way), so its large cell comes
-from the pure run minutes earlier.
+Two fast-jev configurations matter: **pure** (Jev decisions untouched) and
+**tuned** (`preserveCallInputs: true` + `preserveErrorTails: 800` — calls Jev
+voted to drop keep a one-line record of tool + input, and failing results
+keep their final 800 characters, where errors and stacks live). Built-in
+numbers are from the same runs; the large built-in cell failed in both the
+tuned run (summarizer exceeded max generation length) and took 117 s in the
+tails run — the scored path cannot fail either way.
 
 ### Compaction operation
 
 | session | arm | compact wall | context after |
 |---|---|---|---|
 | small (7.7k) | **fast-jev pure** | **0.28 s** | **345 tok** |
-| small | fast-jev tuned | 0.34 s | 1,375 tok |
-| small | built-in summary | 16.3 s | 1,049 tok |
+| small | fast-jev tuned+tails | 0.28 s | 1,505 tok |
+| small | built-in summary | 16.3–26.5 s | 1,049–1,112 tok |
 | medium (14.8k) | **fast-jev pure** | **0.38 s** | **626 tok** |
-| medium | fast-jev tuned | 0.31 s | 2,683 tok |
-| medium | built-in summary | 16.3 s | 1,279 tok |
+| medium | fast-jev tuned+tails | 0.39 s | 2,683 tok |
+| medium | built-in summary | 16.3–22.4 s | 1,279–1,364 tok |
 | large (26.9k) | **fast-jev pure** | **0.44 s** | **999 tok** |
-| large | fast-jev tuned | 0.47 s | 4,783 tok |
-| large | built-in summary | 24.7 s | 1,612 tok |
+| large | fast-jev tuned+tails | 0.45 s | 5,171 tok |
+| large | built-in summary | 24.7–117 s | 1,542–1,612 tok |
 
 Compaction token cost (real, provider-reported): Jev requests are 2.2k–8.2k
 in + 0.3k–1.4k out regardless of tuning (the questions are identical; only
@@ -69,13 +69,13 @@ local application differs). The built-in summarizer used 6.1k–18.2k in +
 | session | arm | constraints | paths (inputs) | commands (inputs) | errors (deep in outputs) |
 |---|---|---|---|---|---|
 | small | fast-jev pure | 3/3 | 0/4 | 0/4 | 0/1 |
-| small | **fast-jev tuned** | 3/3 | **4/4** | **4/4** | 0/1 |
-| small | built-in | 3/3 | 4/4 | 3/4 | 0/1 |
+| small | **fast-jev tuned+tails** | 3/3 | **4/4** | **4/4** | 0/1 |
+| small | built-in | 3/3 | 4/4 | 3–4/4 | 0/1 |
 | medium | fast-jev pure | 5/5 | 0/14 | 0/2 | — |
-| medium | **fast-jev tuned** | 5/5 | **14/14** | **2/2** | — |
+| medium | **fast-jev tuned+tails** | 5/5 | **14/14** | **2/2** | — |
 | medium | built-in | 5/5 | 14/14 | 2/2 | — |
 | large | fast-jev pure | 10/10 | 0/17 | 0/8 | 0/3 |
-| large | **fast-jev tuned** | 10/10 | **17/17** | **8/8** | 0/3 |
+| large | **fast-jev tuned+tails** | 10/10 | **17/17** | **8/8** | **2/3** |
 | large | built-in | 10/10 | 17/17 | 0/8 | 2/3 |
 
 ### Downstream memory QA (session model, tools disabled, 3 questions)
@@ -97,12 +97,12 @@ local application differs). The built-in summarizer used 6.1k–18.2k in +
 - **Pure vs tuned:** real Jev drops old tool calls wholesale (keepCall
   0.25–0.29 for stale calls in this bench): pure mode produces the smallest
   context of anything measured (345–999 tokens) but loses exact call inputs.
-  Tuned mode (`preserveCallInputs: true`) downgrades those drops to
-  result-only removals, which restored every planted path and command
-  (35/35 + 14/14 inputs) and lifted memory QA from 3/8 to 6/8, at the price
-  of a larger context (the call-input lines plus 300-char result heads).
-  Deep error codes stay dropped in both: they live in result content, which
-  Jev treats as re-derivable, and the note says so.
+  Tuned mode downgrades those drops to result-only removals (every planted
+  path and command restored, 35/35 + 14/14) and `preserveErrorTails: 800`
+  keeps the last 800 characters of failing results, which recovered deep
+  error codes at the same rate as the built-in summary (2/3 at large) —
+  deterministically, with the real error text and stack in context, instead
+  of a model's paraphrase.
 - **Failure modes:** the built-in summarizer can fail outright — in the tuned
   run its large cell died by exceeding max generation length (pi rejects
   length-stopped summaries). The scored path has no generation step, so it

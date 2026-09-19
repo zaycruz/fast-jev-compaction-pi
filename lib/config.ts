@@ -57,6 +57,13 @@ export interface FastJevConfig {
    * them in the compacted transcript. Default `false` (pure Jev decisions).
    */
   preserveCallInputs?: boolean;
+  /**
+   * When a failing tool result (pi marks it `isError`) is dropped or
+   * truncated, keep its final N characters (the error and stack usually live
+   * at the end of the output) instead of losing them. `0` keeps tails off.
+   * Default `0`.
+   */
+  preserveErrorTails?: number;
 }
 
 export const CONFIG_FILENAME = "fast-jev-compaction.json";
@@ -75,6 +82,7 @@ function readConfigFile(path: string): FastJevConfig | undefined {
 }
 
 const NUMERIC_KEYS = [
+  "preserveErrorTails",
   "keepThreshold",
   "preserveRecentMessages",
   "maxStateTokens",

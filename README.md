@@ -90,7 +90,8 @@ Optional settings live in `~/.pi/agent/fast-jev-compaction.json` (global) or
   "minReductionRatio": 0.25,
   "requestTimeoutMs": 120000,
   "goal": "optional standing task description",
-  "preserveCallInputs": true
+  "preserveCallInputs": true,
+  "preserveErrorTails": 800
 }
 ```
 
@@ -163,18 +164,21 @@ at `large` (~27k-token context; full tables and method in
 
 | | fast-jev pure | fast-jev tuned | built-in summary |
 | --- | --- | --- | --- |
-| compaction wall | **0.44 s** | **0.47 s** | 24.7 s |
-| compaction tokens | **9.5 k** | **9.5 k** | 22.9 k |
-| context after | **999 tok** | 4,783 tok | 1,612 tok |
-| exact commands + paths kept | 0 (Jev prunes) | **35/35 + 14/14** | 17/17 + 0/8 |
-| memory QA (3 questions/session) | 3/8 | **6/8** | 4–5/8 |
+| compaction wall | **0.44 s** | **0.45 s** | 24.7–117 s |
+| compaction tokens | **9.5 k** | **9.5 k** | 23.0 k |
+| context after | **999 tok** | 5,171 tok | 1,542–1,612 tok |
+| exact commands + paths kept | 0 (Jev prunes) | **8/8 + 17/17** | 0/8 + 17/17 |
+| deep error codes kept | 0/3 | **2/3** (real text + stack) | 2/3 (paraphrase, nondeterministic) |
+| memory QA (3 questions/session) | 3/8 | **6/8** | 6/8 |
 
 The honest read: real Jev makes compaction ~50× faster and cheaper than an
-LLM summary. Pure mode produces the smallest context of anything measured
-but drops old tool calls outright (Jev's bet: outputs are re-derivable).
-`preserveCallInputs: true` keeps a one-line record of each dropped call
-(tool + input), which restores every exact command and path and lifts memory
-QA from 3/8 to 6/8, at the cost of a larger context. Run it yourself with
+LLM summary. Pure mode gives the smallest context but drops old tool calls
+(Jev's bet: outputs are re-derivable). The recommended tuning —
+`preserveCallInputs: true` + `preserveErrorTails: 800` — keeps one-line
+records of dropped calls and the tails of failing results: every exact
+command and path survives, error output keeps its real text and stack at
+native-compaction retention rates, and memory QA ties the built-in summary
+while compaction stays ~50× faster. Run it yourself with
 `BENCH_JEV_REAL=1 node bench/run-bench.mjs small medium large`.
 
 ## Development

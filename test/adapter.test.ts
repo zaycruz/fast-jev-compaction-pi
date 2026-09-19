@@ -24,6 +24,8 @@ import {
   type CompactionOutcome,
 } from "../lib/handler.js";
 import { renderSummary } from "../lib/render.js";
+import { applyDecisionsWithTuning } from "../lib/handler.js";
+import { applyDecisions as vendoredApply } from "../vendor/fast-jev/compact.js";
 import { collectToolCalls, estimateTokens, fitState } from "../vendor/fast-jev/state.js";
 import { questionsFor } from "../vendor/fast-jev/compact.js";
 import type { JevAsker, JevQuestions, JevState, Message } from "../vendor/fast-jev/types.js";
@@ -423,6 +425,47 @@ describe("createJevAsker", () => {
   });
 });
 
+describe("applyDecisionsWithTuning", () => {
+  const calls = collectToolCalls(span(), 0);
+  const dropAll = calls.map((c) => ({ ...c, keepCall: 0.2, keepResult: 0.2, action: "drop_call" as const, reason: "call_dropped" as const }));
+
+  it("untuned: identical to the vendored applyDecisions", () => {
+    const messages = span();
+    const mine = applyDecisionsWithTuning(messages, dropAll, calls, { headChars: 300, tombstone: new Set(), errorTailChars: 0 });
+    const vendored = vendoredApply(messages, dropAll, calls, 300);
+    expect(mine).toEqual(vendored);
+    expect(mine).toHaveLength(3);
+  });
+
+  it("tombstoned: call input survives, result collapses to a note", () => {
+    const messages = span();
+    const tombstone = new Set(calls.map((c) => c.tool_use_id));
+    const kept = applyDecisionsWithTuning(messages, dropAll, calls, { headChars: 300, tombstone, errorTailChars: 0 });
+    expect(kept).toHaveLength(messages.length);
+    const summary = renderSummary(kept);
+    expect(summary).toContain('[tool call read] {"file_path":"a.ts"}');
+    expect(summary).toContain("truncated 1700 chars");
+  });
+
+  it("error tail: failing results keep their last characters", () => {
+    const messages = [
+      { role: "assistant" as const, text: "", toolUses: [{ tool_use_id: "e1", tool: "bash", input: { command: "cat log" }, text: "" }] },
+      { role: "user" as const, text: "", toolUses: [], toolResults: [{ tool_use_id: "e1", text: `INFO ok\n`.repeat(100) + "UNIQUE-MIDDLE-MARKER\n" + `INFO ok\n`.repeat(100) + "FATAL 0xABCDEF12: boom\n  at handler (pipeline.ts:88)", isError: true }] },
+    ];
+    const errorCalls = collectToolCalls(messages, 0);
+    const decisions = errorCalls.map((c) => ({ ...c, keepCall: 0.2, keepResult: 0.2, action: "drop_call" as const, reason: "call_dropped" as const }));
+    const kept = applyDecisionsWithTuning(messages, decisions, errorCalls, {
+      headChars: 300,
+      tombstone: new Set(["e1"]),
+      errorTailChars: 200,
+    });
+    const resultText = kept[1]!.toolResults![0]!.text;
+    expect(resultText).toContain("kept the last 200 of");
+    expect(resultText).toContain("FATAL 0xABCDEF12: boom");
+    expect(resultText).not.toContain("UNIQUE-MIDDLE-MARKER");
+  });
+});
+
 describe("preserveCallInputs tuning", () => {
   function tunedRun(spanMessages: Message[], asker: JevAsker, preserve: boolean) {
     return runFastJevCompaction({
@@ -446,7 +489,9 @@ describe("preserveCallInputs tuning", () => {
     const outcome = await tunedRun(span(), fakeJev(() => 0.2), true);
     expect(outcome.ok).toBe(true);
     const decision = outcome.result!.decisions[0]!;
-    expect(decision.action).toBe("drop_result");
+    expect(decision.action).toBe("drop_call");
+    expect(outcome.result!.stats.callsDropped).toBe(0);
+    expect(outcome.result!.stats.resultsDropped).toBe(1);
     const summary = outcome.entry!.summary;
     expect(summary).toContain('[tool call read] {"file_path":"a.ts"}');
     expect(summary).toContain("truncated 1700 chars");
