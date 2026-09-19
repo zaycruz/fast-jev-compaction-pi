@@ -419,7 +419,7 @@ async function main() {
       mkdirSync(join(workDir, "project", ".pi"), { recursive: true });
       writeFileSync(
         join(workDir, "project", ".pi", "settings.json"),
-        JSON.stringify({ compaction: { enabled: true, reserveTokens: 8000, keepRecentTokens: KEEP_RECENT[size] } }),
+        JSON.stringify({ compaction: { enabled: true, keepRecentTokens: KEEP_RECENT[size] } }),
       );
       if (arm === "fastjev") {
         copyFileSync(join(projectCwd, ".pi", "fast-jev-compaction.json"), join(workDir, "project", ".pi", "fast-jev-compaction.json"));

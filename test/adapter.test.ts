@@ -466,6 +466,38 @@ describe("applyDecisionsWithTuning", () => {
   });
 });
 
+describe("compactWithTuning parity", () => {
+  it("with tuning off, the whole result equals the vendored compact() output", async () => {
+    const { compact } = await import("../vendor/fast-jev/compact.js");
+    const messages = [
+      ...span(),
+      { role: "user" as const, text: "also check prod logs", toolUses: [] },
+      { role: "assistant" as const, text: "checking", toolUses: [{ tool_use_id: "u2", tool: "bash", input: { command: "tail -100 prod.log" }, text: "" }] },
+      { role: "user" as const, text: "", toolUses: [], toolResults: [{ tool_use_id: "u2", text: "ERR 1\n".repeat(400), isError: true }] },
+      { role: "assistant" as const, text: "done", toolUses: [] },
+    ];
+    const asker = fakeJev((name) => (name === "result_t1" ? 0.1 : 0.9));
+    const options = { keepThreshold: 0.5, preserveRecentMessages: 0, maxStateTokens: 25000, maxRequestTokens: 30000, truncateHeadChars: 300, goal: "g" };
+    const mine = await runFastJevCompaction({
+      spanMessages: messages,
+      firstKeptEntryId: "k",
+      tokensBefore: 1,
+      config: { apiKey: "k", preserveCallInputs: false },
+      asker,
+    });
+    const theirs = await compact(messages, asker, options);
+    expect(mine.ok).toBe(true);
+    expect(mine.result!.messages).toEqual(theirs.messages);
+    expect(mine.result!.decisions).toEqual(theirs.decisions);
+    expect(mine.result!.stats.messagesAfter).toBe(theirs.stats.messagesAfter);
+    expect(mine.result!.stats.charsAfter).toBe(theirs.stats.charsAfter);
+    expect(mine.result!.stats.requests).toBe(theirs.stats.requests);
+    expect(mine.result!.stats.kept).toBe(theirs.stats.kept);
+    expect(mine.result!.stats.resultsDropped).toBe(theirs.stats.resultsDropped);
+    expect(mine.result!.stats.callsDropped).toBe(theirs.stats.callsDropped);
+  });
+});
+
 describe("preserveCallInputs tuning", () => {
   function tunedRun(spanMessages: Message[], asker: JevAsker, preserve: boolean) {
     return runFastJevCompaction({

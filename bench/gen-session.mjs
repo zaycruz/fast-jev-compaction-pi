@@ -64,14 +64,14 @@ function codeContent(lines) {
   return body.join("\n");
 }
 
-function logContent(lines, withError, errorDepth) {
+function logContent(lines, withError, errorDepth, turn) {
   const body = [];
   for (let i = 0; i < lines; i += 1) {
     body.push(`INFO worker-${int(0, 7)} processed ${int(10, 999)} items in ${int(2, 90)}ms`);
   }
   if (withError) {
     const code = `FATAL 0x${hex(8).toUpperCase()}`;
-    addMarker("error", code, null, errorDepth);
+    addMarker("error", code, turn, errorDepth);
     const at = Math.floor((lines * errorDepth) / 100);
     body.splice(at, 0, `FATAL ${code.slice(6)}: ingest stage ${int(1, 9)} dropped the batch`);
     for (let s = 0; s < 6; s += 1) body.splice(at + 1 + s, 0, `  at handler_${hex(4)} (pipeline.ts:${int(10, 900)})`);
@@ -110,7 +110,7 @@ for (let t = 0; t < TURNS; t += 1) {
     addMarker("command", command, t, 0);
     const withError = t % 3 === 1;
     calls.push({ type: "toolCall", id: `c${t}`, name: "bash", arguments: { command } });
-    resultText = logContent(int(30, 120), withError, int(55, 90));
+    resultText = logContent(int(30, 120), withError, int(55, 90), t);
   } else {
     const path = `src/atlas-${hex(6)}/handler-${hex(4)}.ts`;
     calls.push({ type: "toolCall", id: `c${t}`, name: "edit", arguments: { path, old_string: "return 0", new_string: "return 1" } });
@@ -159,6 +159,5 @@ manager.appendMessage({
   timestamp: now + 100000,
 });
 
-for (const marker of markers) if (marker.turn === null) marker.turn = turn;
 if (markersOut) writeFileSync(markersOut, JSON.stringify(markers, null, 2));
 process.stdout.write(manager.getSessionFile());

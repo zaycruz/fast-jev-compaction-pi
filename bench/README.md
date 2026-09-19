@@ -38,12 +38,12 @@ the real-Jev arm. Results land in `bench/results-<ts>.json`.
 ## Results (2026-09-18, real typesafe-ai/jev via the gateway, glm-5.3-flash as the session model)
 
 Two fast-jev configurations matter: **pure** (Jev decisions untouched) and
-**tuned** (`preserveCallInputs: true` + `preserveErrorTails: 800` — calls Jev
+**tuned** (`preserveCallInputs: true` + `preserveErrorTails: 1200` — calls Jev
 voted to drop keep a one-line record of tool + input, and failing results
-keep their final 800 characters, where errors and stacks live). Built-in
-numbers are from the same runs; the large built-in cell failed in both the
-tuned run (summarizer exceeded max generation length) and took 117 s in the
-tails run — the scored path cannot fail either way.
+keep their final 1,200 characters, where errors and stacks live). Built-in
+numbers are from the same runs at pi's default settings. An adversarial
+review of these findings, including two issues it found and fixed, is in
+[ADVERSARIAL-REVIEW.md](ADVERSARIAL-REVIEW.md).
 
 ### Compaction operation
 
@@ -66,6 +66,11 @@ local application differs). The built-in summarizer used 6.1k–18.2k in +
 
 ### Retention — exact strings the model still sees
 
+Error rows below come from the runs at tail 800; at the recommended 1200 the
+tuned config retains **3/3** large error codes (the missed one sits 934 chars
+from its log's end; verified covered at 1200). Built-in retained the same two
+shallower codes via paraphrase.
+
 | session | arm | constraints | paths (inputs) | commands (inputs) | errors (deep in outputs) |
 |---|---|---|---|---|---|
 | small | fast-jev pure | 3/3 | 0/4 | 0/4 | 0/1 |
@@ -75,7 +80,8 @@ local application differs). The built-in summarizer used 6.1k–18.2k in +
 | medium | **fast-jev tuned+tails** | 5/5 | **14/14** | **2/2** | — |
 | medium | built-in | 5/5 | 14/14 | 2/2 | — |
 | large | fast-jev pure | 10/10 | 0/17 | 0/8 | 0/3 |
-| large | **fast-jev tuned+tails** | 10/10 | **17/17** | **8/8** | **2/3** |
+| large | **fast-jev tuned+tails (800)** | 10/10 | **17/17** | **8/8** | 2/3 |
+| large | **fast-jev tuned+tails (1200)** | 10/10 | **17/17** | **8/8** | **3/3** |
 | large | built-in | 10/10 | 17/17 | 0/8 | 2/3 |
 
 ### Downstream memory QA (session model, tools disabled, 3 questions)
@@ -103,11 +109,17 @@ local application differs). The built-in summarizer used 6.1k–18.2k in +
   error codes at the same rate as the built-in summary (2/3 at large) —
   deterministically, with the real error text and stack in context, instead
   of a model's paraphrase.
-- **Failure modes:** the built-in summarizer can fail outright — in the tuned
-  run its large cell died by exceeding max generation length (pi rejects
-  length-stopped summaries). The scored path has no generation step, so it
-  cannot fail that way; its only failure inputs are Jev/transport errors,
-  which fall back to the built-in summary.
+- **Failure modes:** under the benchmark's original `reserveTokens: 8000`
+  cap the built-in summarizer failed its large cell by exceeding max
+  generation length; at pi's default budget it succeeds (verified). The
+  scored path has no generation step, so it cannot fail that way at any
+  budget; its only failure inputs are Jev/transport errors, which fall back
+  to the built-in summary.
+- **Cost scaling:** fast-jev's requests resend the fitted state per batch;
+  the measured sessions fit in one batch. Near the state ceiling with
+  hundreds of candidate calls, batching multiplies input tokens and the
+  token-cost advantage over a single summarization call can invert (latency
+  stays lower; batches run in parallel).
 - **Which configuration wins depends on what you value:** pure Jev for the
   smallest, cheapest continuation (text verbatim, tool history re-derive on
   demand); tuned for exact old commands/paths in-context at still-50x-faster

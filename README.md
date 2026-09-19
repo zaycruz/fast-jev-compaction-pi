@@ -91,7 +91,7 @@ Optional settings live in `~/.pi/agent/fast-jev-compaction.json` (global) or
   "requestTimeoutMs": 120000,
   "goal": "optional standing task description",
   "preserveCallInputs": true,
-  "preserveErrorTails": 800
+  "preserveErrorTails": 1200
 }
 ```
 
@@ -174,12 +174,13 @@ at `large` (~27k-token context; full tables and method in
 The honest read: real Jev makes compaction ~50× faster and cheaper than an
 LLM summary. Pure mode gives the smallest context but drops old tool calls
 (Jev's bet: outputs are re-derivable). The recommended tuning —
-`preserveCallInputs: true` + `preserveErrorTails: 800` — keeps one-line
+`preserveCallInputs: true` + `preserveErrorTails: 1200` — keeps one-line
 records of dropped calls and the tails of failing results: every exact
-command and path survives, error output keeps its real text and stack at
-native-compaction retention rates, and memory QA ties the built-in summary
-while compaction stays ~50× faster. Run it yourself with
-`BENCH_JEV_REAL=1 node bench/run-bench.mjs small medium large`.
+command, path, and error code survives with real text and stack, memory QA
+ties the built-in summary, and compaction stays ~50× faster. Caveats and an
+adversarial review of the benchmark itself:
+[bench/ADVERSARIAL-REVIEW.md](bench/ADVERSARIAL-REVIEW.md). Run it yourself
+with `BENCH_JEV_REAL=1 node bench/run-bench.mjs small medium large`.
 
 ## Development
 
