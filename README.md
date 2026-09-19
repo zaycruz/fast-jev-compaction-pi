@@ -89,7 +89,8 @@ Optional settings live in `~/.pi/agent/fast-jev-compaction.json` (global) or
   "truncateHeadChars": 300,
   "minReductionRatio": 0.25,
   "requestTimeoutMs": 120000,
-  "goal": "optional standing task description"
+  "goal": "optional standing task description",
+  "preserveCallInputs": true
 }
 ```
 
@@ -160,22 +161,20 @@ real session model (`zap/glm-5.3-flash-sglang`) for the built-in arm. Results
 at `large` (~27k-token context; full tables and method in
 [bench/README.md](bench/README.md)):
 
-| | fast-jev (real Jev) | built-in summary |
-| --- | --- | --- |
-| compaction wall | **0.44 s** | 24.7 s |
-| compaction tokens | **9.5 k** | 22.9 k |
-| context after | **999 tok** | 1,612 tok |
-| planted user constraints kept | **18/18** (verbatim) | 18/18 |
-| old tool facts kept (paths/commands/errors) | 0 (Jev prunes; re-run instead) | partial, nondeterministic |
-| downstream memory QA (3 questions) | 3/8 | **5/8** |
+| | fast-jev pure | fast-jev tuned | built-in summary |
+| --- | --- | --- | --- |
+| compaction wall | **0.44 s** | **0.47 s** | 24.7 s |
+| compaction tokens | **9.5 k** | **9.5 k** | 22.9 k |
+| context after | **999 tok** | 4,783 tok | 1,612 tok |
+| exact commands + paths kept | 0 (Jev prunes) | **35/35 + 14/14** | 17/17 + 0/8 |
+| memory QA (3 questions/session) | 3/8 | **6/8** | 4–5/8 |
 
 The honest read: real Jev makes compaction ~50× faster and cheaper than an
-LLM summary, and its pruned transcript is even smaller than a summary —
-because it treats tool outputs as re-derivable and drops old calls outright,
-keeping user and assistant text verbatim. The cost is passive recall of old
-tool trivia: if your workflow needs exact old commands in-context without
-re-running them, the built-in summary still retains more (when it happens to
-copy them). Run it yourself with
+LLM summary. Pure mode produces the smallest context of anything measured
+but drops old tool calls outright (Jev's bet: outputs are re-derivable).
+`preserveCallInputs: true` keeps a one-line record of each dropped call
+(tool + input), which restores every exact command and path and lifts memory
+QA from 3/8 to 6/8, at the cost of a larger context. Run it yourself with
 `BENCH_JEV_REAL=1 node bench/run-bench.mjs small medium large`.
 
 ## Development

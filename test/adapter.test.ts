@@ -423,6 +423,39 @@ describe("createJevAsker", () => {
   });
 });
 
+describe("preserveCallInputs tuning", () => {
+  function tunedRun(spanMessages: Message[], asker: JevAsker, preserve: boolean) {
+    return runFastJevCompaction({
+      spanMessages,
+      firstKeptEntryId: "kept-1",
+      tokensBefore: 100,
+      config: { ...baseConfig, preserveCallInputs: preserve },
+      asker,
+    });
+  }
+
+  it("off: matches pure Jev decisions (calls dropped)", async () => {
+    const outcome = await tunedRun(span(), fakeJev(() => 0.2), false);
+    expect(outcome.ok).toBe(true);
+    expect(outcome.result!.decisions.map((d) => d.action)).toEqual(["drop_call"]);
+    expect(outcome.entry!.summary).not.toContain("[tool call read]");
+    expect(outcome.entry!.summary).not.toContain('"file_path":"a.ts"');
+  });
+
+  it("on: dropped calls keep their one-line input, results become notes", async () => {
+    const outcome = await tunedRun(span(), fakeJev(() => 0.2), true);
+    expect(outcome.ok).toBe(true);
+    const decision = outcome.result!.decisions[0]!;
+    expect(decision.action).toBe("drop_result");
+    const summary = outcome.entry!.summary;
+    expect(summary).toContain('[tool call read] {"file_path":"a.ts"}');
+    expect(summary).toContain("truncated 1700 chars");
+    expect(summary).not.toContain("x".repeat(2000));
+    expect(outcome.result!.stats.resultsDropped).toBe(1);
+    expect(outcome.result!.stats.callsDropped).toBe(0);
+  });
+});
+
 describe("gateway transport", () => {
   const realFetch = (status: number, body: unknown) =>
     (async (_url: string | URL | Request, init?: RequestInit) => {

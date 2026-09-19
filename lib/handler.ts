@@ -1,10 +1,16 @@
 import type { FileOperations, SessionEntry } from "@earendil-works/pi-coding-agent";
 import {
+  applyDecisions,
+  batchCalls,
   compact,
+  decideCall,
   messageChars,
+  questionsFor,
+  reductionRatio,
   resolveOptions,
 } from "../vendor/fast-jev/compact.js";
-import { buildJevRequest, parseJevResponse } from "../vendor/fast-jev/request.js";
+import { buildJevRequest, noulAnswer, parseJevResponse } from "../vendor/fast-jev/request.js";
+import { collectToolCalls, fitState } from "../vendor/fast-jev/state.js";
 import type {
   CompactResult,
   JevAsker,
@@ -328,6 +334,93 @@ export function describeOutcome(outcome: CompactionOutcome): string {
   }; state ~${stats.stateTokens} tokens (${stats.stateStage}) in ${stats.requests} request(s)`;
 }
 
+/** One batch of questions to Jev, mirroring the vendored `compact` loop. */
+async function askQuestionsBatch(
+  asker: JevAsker,
+  state: Parameters<JevAsker["ask"]>[0],
+  batch: readonly Parameters<typeof questionsFor>[0][],
+): Promise<Map<string, { keepCall: number; keepResult: number }>> {
+  const questions: JevQuestions = Object.assign({}, ...batch.map(questionsFor));
+  const { answers } = await asker.ask(state, questions);
+  return new Map(
+    batch.map((call) => [
+      call.id,
+      {
+        keepCall: noulAnswer(answers, `call_${call.id}`),
+        keepResult: noulAnswer(answers, `result_${call.id}`),
+      },
+    ]),
+  );
+}
+
+/**
+ * The vendored `compact` pipeline, with one extension point: when
+ * `preserveCallInputs` is on, calls Jev voted to drop entirely keep a
+ * one-line record (tool + input) and only lose the result. Everything else —
+ * fitting, batching, decisions, stats — mirrors the vendored loop exactly.
+ */
+async function compactWithTuning(
+  messages: readonly Message[],
+  asker: JevAsker,
+  options: Parameters<typeof resolveOptions>[0],
+  preserveCallInputs: boolean,
+): Promise<CompactResult> {
+  const started = Date.now();
+  const resolved = resolveOptions(options);
+  const calls = collectToolCalls(messages, resolved.preserveRecentMessages);
+  const candidates = calls.filter((call) => !call.pinned);
+  const charsBefore = messages.reduce((sum, message) => sum + messageChars(message), 0);
+
+  let fitted = { tokens: 0, stage: "" };
+  let requestCount = 0;
+  const answers = new Map<string, { keepCall: number; keepResult: number }>();
+  if (candidates.length > 0) {
+    const state = fitState(messages, calls, resolved);
+    fitted = state;
+    const batches = batchCalls(candidates, state.tokens, resolved);
+    requestCount = batches.length;
+    const answered = await Promise.all(
+      batches.map((batch) => askQuestionsBatch(asker, state.state, batch)),
+    );
+    for (const map of answered) {
+      for (const [id, answer] of map) answers.set(id, answer);
+    }
+  }
+
+  let decisions = calls.map((call) =>
+    decideCall(call, answers.get(call.id) ?? { keepCall: 1, keepResult: 1 }, resolved),
+  );
+  if (preserveCallInputs) {
+    decisions = decisions.map((decision) =>
+      decision.action === "drop_call"
+        ? { ...decision, action: "drop_result" as const, reason: "result_dropped" as const }
+        : decision,
+    );
+  }
+  const kept = applyDecisions(messages, decisions, calls, resolved.truncateHeadChars);
+  const count = (reason: (typeof decisions)[number]["reason"]) =>
+    decisions.filter((decision) => decision.reason === reason).length;
+  return {
+    messages: kept,
+    decisions,
+    stats: {
+      messagesBefore: messages.length,
+      messagesAfter: kept.length,
+      charsBefore,
+      charsAfter: kept.reduce((sum, message) => sum + messageChars(message), 0),
+      calls: calls.length,
+      kept: count("kept"),
+      resultsDropped: count("result_dropped"),
+      callsDropped: count("call_dropped"),
+      pinned: count("pinned"),
+      stateTokens: fitted.tokens,
+      stateStage: fitted.stage,
+      requests: requestCount,
+      ms: Date.now() - started,
+    },
+  };
+}
+
 /**
  * Runs fast-jev over base + span and returns either the pi compaction entry
  * data or a decline (fall back to pi's built-in summary). Throws when Jev
@@ -357,7 +450,13 @@ export async function runFastJevCompaction(run: CompactionRun): Promise<Compacti
   };
 
   const transcript = buildTranscript(run.previous, run.spanMessages);
-  const result = await compact(transcript, asker, options);
+  const result = await compactWithTuning(
+    transcript,
+    asker,
+    options,
+    run.config.preserveCallInputs === true,
+  );
+  void reductionRatio;
 
   const minReduction = Math.min(
     1,

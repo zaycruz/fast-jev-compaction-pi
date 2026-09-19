@@ -377,6 +377,7 @@ async function main() {
     join(projectCwd, ".pi", "settings.json"),
     JSON.stringify({ compaction: { enabled: true, reserveTokens: 8000, keepRecentTokens: 0 } }, null, 2),
   );
+  const PRESERVE_INPUTS = process.env.BENCH_PRESERVE_INPUTS === "1";
   writeFileSync(
     join(projectCwd, ".pi", "fast-jev-compaction.json"),
     JSON.stringify(
@@ -386,6 +387,7 @@ async function main() {
             baseUrl: "https://ai-gateway.vercel.sh/v4/ai",
             model: "typesafe-ai/jev",
             gateway: true,
+            preserveCallInputs: PRESERVE_INPUTS,
             requestTimeoutMs: 30000,
           }
         : {
@@ -432,7 +434,7 @@ async function main() {
         });
       } catch (error) {
         console.log(`  [${size}/${arm}] SKIPPED: ${String(error).slice(0, 120)}`);
-        results.push({ size, arm, label: arm === "fastjev" ? (REAL_JEV ? "fast-jev (real)" : "fast-jev (sim Jev)") : `built-in (${SUM_MODEL}, summary)`, failed: true, errorMessage: String(error), qa: [] });
+        results.push({ size, arm, label: arm === "fastjev" ? (REAL_JEV ? (PRESERVE_INPUTS ? "fast-jev (real, tuned)" : "fast-jev (real)") : "fast-jev (sim Jev)") : `built-in (${SUM_MODEL}, summary)`, failed: true, errorMessage: String(error), qa: [] });
         continue;
       }
       const analysis = analyze(run.sessionFile, markers, run.eventResult);
@@ -467,7 +469,7 @@ async function main() {
       results.push({
         size,
         arm,
-        label: arm === "fastjev" ? (REAL_JEV ? "fast-jev (real)" : "fast-jev (sim Jev)") : `built-in (${SUM_MODEL}, summary)`,
+        label: arm === "fastjev" ? (REAL_JEV ? (PRESERVE_INPUTS ? "fast-jev (real, tuned)" : "fast-jev (real)") : "fast-jev (sim Jev)") : `built-in (${SUM_MODEL}, summary)`,
         compactionMs: Math.round(run.ms),
         failed: run.failed,
         errorMessage: run.errorMessage,
@@ -492,7 +494,7 @@ async function main() {
 
   if (mock) mock.kill("SIGTERM");
   const outFile = join(ROOT, "bench", `results-${Date.now()}.json`);
-  writeFileSync(outFile, JSON.stringify({ results, jevLog, model: SUM_MODEL, realJev: REAL_JEV }, null, 2));
+  writeFileSync(outFile, JSON.stringify({ results, jevLog, model: SUM_MODEL, realJev: REAL_JEV, preserveCallInputs: PRESERVE_INPUTS }, null, 2));
   console.log(`\nfull results: ${outFile}`);
   renderReport(results);
 }

@@ -50,6 +50,13 @@ export interface FastJevConfig {
    * slug (e.g. `typesafe-ai/jev`). Default `false`.
    */
   gateway?: boolean;
+  /**
+   * When Jev votes to drop a call entirely, keep a one-line record of the
+   * call (tool name + input) and only drop the result. Call inputs are
+   * cheap, often not re-derivable (exact commands, paths), and this keeps
+   * them in the compacted transcript. Default `false` (pure Jev decisions).
+   */
+  preserveCallInputs?: boolean;
 }
 
 export const CONFIG_FILENAME = "fast-jev-compaction.json";
@@ -90,6 +97,7 @@ export function sanitizeConfig(raw: FastJevConfig): FastJevConfig {
     if (typeof value === "number" && Number.isFinite(value)) config[key] = value;
   }
   if (raw.gateway === true) config.gateway = true;
+  if (raw.preserveCallInputs === true) config.preserveCallInputs = true;
   return config;
 }
 

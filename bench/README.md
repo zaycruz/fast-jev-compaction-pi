@@ -9,7 +9,7 @@ size of the context the model sees afterwards, and information retention
 
 | Arm | What runs |
 | --- | --- |
-| `fastjev` | This extension scoring with **real `typesafe-ai/jev`** through the Vercel AI Gateway (`BENCH_JEV_REAL=1`, the default for published numbers). A policy mock (`BENCH_JEV_REAL=0`) exists for offline development. |
+| `fastjev` | This extension scoring with **real `typesafe-ai/jev`** through the Vercel AI Gateway (`BENCH_JEV_REAL=1`, the default for published numbers). A policy mock (`BENCH_JEV_REAL=0`) exists for offline development. `BENCH_PRESERVE_INPUTS=1` enables `preserveCallInputs` (see below). |
 | `builtin` | pi's built-in compaction, unmodified, driven with the user's actual session model (`zap/glm-5.3-flash-sglang` via the zap router — the same model their live pi sessions run; the default codex route is quota-exhausted here). The summarizer works on pi's serialized span, where tool results are truncated to 2,000 chars before any model sees them. |
 
 Sessions come from `bench/gen-session.mjs` (fixed seed per size): scripted
@@ -37,60 +37,81 @@ the real-Jev arm. Results land in `bench/results-<ts>.json`.
 
 ## Results (2026-09-18, real typesafe-ai/jev via the gateway, glm-5.3-flash as the session model)
 
+Three fast-jev variants matter: **pure** (Jev decisions untouched) and
+**tuned** (`preserveCallInputs: true` — calls Jev voted to drop keep a
+one-line record of tool + input, only the result goes). Built-in numbers are
+from the same runs; the large built-in cell in the tuned run failed
+(summarizer hit its max generation length; pi rejects length-stopped
+summaries — the scored path cannot fail that way), so its large cell comes
+from the pure run minutes earlier.
+
 ### Compaction operation
 
-| session | pre-ctx | arm | compact wall | compaction tokens (in / out) | context after |
-|---|---|---|---|---|---|
-| small (7.7k) | 7,731 tok | **fast-jev (real)** | **0.28 s** | 2,169 / 292 | **345 tok** |
-| small | | built-in summary | 16.3 s | 6,137 / 2,761 | 1,049 tok |
-| medium (14.8k) | 14,755 tok | **fast-jev (real)** | **0.38 s** | 4,244 / 670 | **626 tok** |
-| medium | | built-in summary | 16.3 s | 11,511 / 2,837 | 1,279 tok |
-| large (26.9k) | 26,854 tok | **fast-jev (real)** | **0.44 s** | 8,180 / 1,354 | **999 tok** |
-| large | | built-in summary | 24.7 s | 18,216 / 4,690 | 1,612 tok |
+| session | arm | compact wall | context after |
+|---|---|---|---|
+| small (7.7k) | **fast-jev pure** | **0.28 s** | **345 tok** |
+| small | fast-jev tuned | 0.34 s | 1,375 tok |
+| small | built-in summary | 16.3 s | 1,049 tok |
+| medium (14.8k) | **fast-jev pure** | **0.38 s** | **626 tok** |
+| medium | fast-jev tuned | 0.31 s | 2,683 tok |
+| medium | built-in summary | 16.3 s | 1,279 tok |
+| large (26.9k) | **fast-jev pure** | **0.44 s** | **999 tok** |
+| large | fast-jev tuned | 0.47 s | 4,783 tok |
+| large | built-in summary | 24.7 s | 1,612 tok |
+
+Compaction token cost (real, provider-reported): Jev requests are 2.2k–8.2k
+in + 0.3k–1.4k out regardless of tuning (the questions are identical; only
+local application differs). The built-in summarizer used 6.1k–18.2k in +
+2.3k–4.7k out.
 
 ### Retention — exact strings the model still sees
 
-| session | arm | constraints | paths (call inputs) | commands (call inputs) | errors (deep in outputs) |
+| session | arm | constraints | paths (inputs) | commands (inputs) | errors (deep in outputs) |
 |---|---|---|---|---|---|
-| small | **fast-jev (real)** | 3/3 | 0/4 | 0/4 | 0/1 |
-| small | built-in | 3/3 | 4/4 | 4/4 | 0/1 |
-| medium | **fast-jev (real)** | 5/5 | 0/14 | 0/2 | — (none planted) |
-| medium | built-in | 5/5 | 14/14 | 0/2 | — |
-| large | **fast-jev (real)** | 10/10 | 0/17 | 0/8 | 0/3 |
+| small | fast-jev pure | 3/3 | 0/4 | 0/4 | 0/1 |
+| small | **fast-jev tuned** | 3/3 | **4/4** | **4/4** | 0/1 |
+| small | built-in | 3/3 | 4/4 | 3/4 | 0/1 |
+| medium | fast-jev pure | 5/5 | 0/14 | 0/2 | — |
+| medium | **fast-jev tuned** | 5/5 | **14/14** | **2/2** | — |
+| medium | built-in | 5/5 | 14/14 | 2/2 | — |
+| large | fast-jev pure | 10/10 | 0/17 | 0/8 | 0/3 |
+| large | **fast-jev tuned** | 10/10 | **17/17** | **8/8** | 0/3 |
 | large | built-in | 10/10 | 17/17 | 0/8 | 2/3 |
 
 ### Downstream memory QA (session model, tools disabled, 3 questions)
 
-| session | fast-jev (real) | built-in | QA prompt tokens fast-jev / built-in |
+| session | fast-jev pure | **fast-jev tuned** | built-in |
 |---|---|---|---|
-| small | 1/3 | **2/3** | 1,046 / 1,627 |
-| medium | 1/2 | 1/2 | 1,360 / 1,816 |
-| large | 1/3 | **2/3** | 1,120 / 2,598 |
+| small | 1/3 | **2/3** | 1/3 |
+| medium | 1/2 | **2/2** | 2/2 |
+| large | 1/3 | **2/3** | 3/3* |
+| total | 3/8 | **6/8** | 4–5/8 |
+
+*tuned run; the pure run's built-in large cell scored 2/3.
 
 ## Reading the numbers
 
 - **Latency and cost:** real Jev scored each span in 277–435 ms with one
   request (2.2k–8.2k in, 0.3k–1.4k out, provider-reported). The summarizer
   took 16–25 s and 9k–23k tokens. Compaction becomes effectively free.
-- **Context after — the surprise:** with real scoring, fast-jev's compacted
-  transcript is *smaller* than the LLM summary (999 vs 1,612 tokens at large).
-  Real Jev drops old tool calls wholesale, keeping user and assistant text.
-  The "verbatim is bigger" intuition from a conservative policy does not hold
-  with the real model.
-- **Retention — Jev's design bet:** real Jev treats tool outputs as
-  re-derivable: it pruned *all* old call inputs and deep error codes in this
-  bench (paths/commands/errors 0 across sizes) while keeping every planted
-  user constraint (18/18, verbatim). The built-in summary happened to carry
-  more old tool facts (paths in its file lists, a command it copied), and won
-  the memory-QA column 5/8 vs 3/8. In other words: real Jev optimizes for a
-  cheap continuation and assumes re-running tools is cheap too; if your
-  workflow needs exact old tool facts in-context without re-running, that is
-  what the `keepThreshold` knob and the `minReductionRatio` fallback are for —
-  and what the built-in summary still does better today.
-- **Which arm "wins" depends on what you value:** continuation cost and speed
-  (fast-jev, by a wide margin) vs passive retention of old tool trivia
-  (built-in summary, when the summarizer happens to copy it — which is not
-  guaranteed, nondeterministic, and failed on 2 of 3 command sets here).
+- **Pure vs tuned:** real Jev drops old tool calls wholesale (keepCall
+  0.25–0.29 for stale calls in this bench): pure mode produces the smallest
+  context of anything measured (345–999 tokens) but loses exact call inputs.
+  Tuned mode (`preserveCallInputs: true`) downgrades those drops to
+  result-only removals, which restored every planted path and command
+  (35/35 + 14/14 inputs) and lifted memory QA from 3/8 to 6/8, at the price
+  of a larger context (the call-input lines plus 300-char result heads).
+  Deep error codes stay dropped in both: they live in result content, which
+  Jev treats as re-derivable, and the note says so.
+- **Failure modes:** the built-in summarizer can fail outright — in the tuned
+  run its large cell died by exceeding max generation length (pi rejects
+  length-stopped summaries). The scored path has no generation step, so it
+  cannot fail that way; its only failure inputs are Jev/transport errors,
+  which fall back to the built-in summary.
+- **Which configuration wins depends on what you value:** pure Jev for the
+  smallest, cheapest continuation (text verbatim, tool history re-derive on
+  demand); tuned for exact old commands/paths in-context at still-50x-faster
+  compaction; the built-in summary when you want an LLM to guess what matters.
 
 Caveats: one seed per size; one session model; three QA questions; marker
 retention measures exact strings, not semantic usefulness. Jev scoring is
