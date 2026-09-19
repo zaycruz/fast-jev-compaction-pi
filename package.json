@@ -1,7 +1,7 @@
 {
   "name": "fast-jev-compaction-pi",
-  "version": "0.1.1",
-  "description": "Verbatim Jev-guided context compaction for pi: replaces the built-in compaction summary with fast-jev-compaction decisions \u2014 stale tool calls/results are dropped or truncated, everything kept stays verbatim.",
+  "version": "0.2.0",
+  "description": "Verbatim Jev-guided context compaction for pi: replaces the built-in compaction summary with fast-jev-compaction decisions — stale tool calls/results are dropped or truncated, everything kept stays verbatim.",
   "type": "module",
   "license": "MIT",
   "keywords": [
