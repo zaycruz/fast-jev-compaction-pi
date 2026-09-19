@@ -154,24 +154,29 @@ unmodified; see `vendor/README.md`.
 ## Does it actually help? (benchmark)
 
 `bench/` measures fast-jev against pi's built-in summary compaction on
-identical seeded sessions with planted "memory markers" — using the **real
-session model** (`zap/glm-5.3-flash-sglang`) for the built-in arm and a
-disclosed simulation of Jev's scoring policy for the extension (no API key
-exists here). Headline at `large` (~27k-token context, full tables and
-method in [bench/README.md](bench/README.md)):
+identical seeded sessions with planted "memory markers" — real
+`typesafe-ai/jev` through the Vercel AI Gateway for the extension, and the
+real session model (`zap/glm-5.3-flash-sglang`) for the built-in arm. Results
+at `large` (~27k-token context; full tables and method in
+[bench/README.md](bench/README.md)):
 
-| | fast-jev | built-in summary |
+| | fast-jev (real Jev) | built-in summary |
 | --- | --- | --- |
-| compaction wall | **0.52 s** | 25.8 s |
-| compaction tokens | **6.8 k** (est.) | 23.5 k |
-| context after | 6,565 tok | **1,601 tok** |
-| exact commands / errors still visible | **8/8 + 3/3** | 0/8 + 2/3 |
-| downstream memory QA (3 questions) | **3/3** | 2/3 (one hallucinated code) |
+| compaction wall | **0.44 s** | 24.7 s |
+| compaction tokens | **9.5 k** | 22.9 k |
+| context after | **999 tok** | 1,612 tok |
+| planted user constraints kept | **18/18** (verbatim) | 18/18 |
+| old tool facts kept (paths/commands/errors) | 0 (Jev prunes; re-run instead) | partial, nondeterministic |
+| downstream memory QA (3 questions) | 3/8 | **5/8** |
 
-Trade-off, honestly stated: the verbatim transcript is 2–4× larger than a
-summary, so every later request pays more input tokens — that is what
-"nothing paraphrased away" costs. Run it yourself with
-`node bench/run-bench.mjs small medium large`.
+The honest read: real Jev makes compaction ~50× faster and cheaper than an
+LLM summary, and its pruned transcript is even smaller than a summary —
+because it treats tool outputs as re-derivable and drops old calls outright,
+keeping user and assistant text verbatim. The cost is passive recall of old
+tool trivia: if your workflow needs exact old commands in-context without
+re-running them, the built-in summary still retains more (when it happens to
+copy them). Run it yourself with
+`BENCH_JEV_REAL=1 node bench/run-bench.mjs small medium large`.
 
 ## Development
 

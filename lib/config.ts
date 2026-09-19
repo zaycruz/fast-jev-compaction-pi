@@ -43,6 +43,13 @@ export interface FastJevConfig {
   minReductionRatio?: number;
   /** Per-request timeout in milliseconds; `0` disables it. Default `120000`. */
   requestTimeoutMs?: number;
+  /**
+   * Route Jev requests through the Vercel AI Gateway instead of speaking
+   * TypeSafe's native contract. When set, `baseUrl` is the gateway base
+   * (e.g. `https://ai-gateway.vercel.sh/v4/ai`) and `model` is the gateway
+   * slug (e.g. `typesafe-ai/jev`). Default `false`.
+   */
+  gateway?: boolean;
 }
 
 export const CONFIG_FILENAME = "fast-jev-compaction.json";
@@ -82,6 +89,7 @@ export function sanitizeConfig(raw: FastJevConfig): FastJevConfig {
     const value = raw[key];
     if (typeof value === "number" && Number.isFinite(value)) config[key] = value;
   }
+  if (raw.gateway === true) config.gateway = true;
   return config;
 }
 

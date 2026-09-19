@@ -423,6 +423,96 @@ describe("createJevAsker", () => {
   });
 });
 
+describe("gateway transport", () => {
+  const realFetch = (status: number, body: unknown) =>
+    (async (_url: string | URL | Request, init?: RequestInit) => {
+      void init;
+      return new Response(JSON.stringify(body), { status });
+    }) as typeof fetch;
+
+  it("maps noul questions to boolean and boolean answers back to noul", async () => {
+    const inits: Array<RequestInit & { body?: string }> = [];
+    const asker = createJevAsker(
+      {
+        apiKey: "gw-key",
+        model: "typesafe-ai/jev",
+        baseUrl: "https://ai-gateway.vercel.sh/v4/ai",
+        gateway: true,
+        requestTimeoutMs: 0,
+        fetchImpl: (async (url: string | URL | Request, init?: RequestInit) => {
+          inits.push({ ...init, body: String(init?.body) } as RequestInit & { body?: string });
+          void url;
+          return new Response(
+            JSON.stringify({
+              answers: { call_t1: { type: "boolean", probability: 0.75 }, result_t1: { type: "boolean", probability: 0.33 } },
+              usage: { inputTokens: 472, outputTokens: 40 },
+            }),
+            { status: 200 },
+          );
+        }) as typeof fetch,
+      },
+    );
+    const response = await asker.ask(
+      { context: "c", goal: "g", history: [] },
+      {
+        call_t1: { type: "noul", instructions: "keep the call" },
+        result_t1: { type: "noul", instructions: "keep the result" },
+      },
+    );
+    expect(response.answers.call_t1).toEqual({ type: "noul", noul: 0.75 });
+    expect(response.usage).toEqual({ input_tokens: 472, output_tokens: 40 });
+    const body = JSON.parse(inits[0]!.body!) as { questions: Record<string, { type?: string; instructions?: string }> };
+    const callQuestion = body.questions.call_t1;
+    expect(callQuestion?.type).toBe("boolean");
+    expect(callQuestion?.instructions).toBe("keep the call");
+  });
+
+  it("posts to the evaluation-model endpoint with gateway headers", async () => {
+    let seenUrl = "";
+    const asker = createJevAsker({
+      apiKey: "gw-key",
+      model: "typesafe-ai/jev",
+      baseUrl: "https://ai-gateway.vercel.sh/v4/ai/",
+      gateway: true,
+      requestTimeoutMs: 0,
+      fetchImpl: (async (url: string | URL | Request) => {
+        seenUrl = String(url);
+        return new Response(JSON.stringify({ answers: { q: { type: "boolean", probability: 0.5 } } }), { status: 200 });
+      }) as typeof fetch,
+    });
+    await asker.ask("state", { q: { type: "noul", instructions: "x" } });
+    expect(seenUrl).toBe("https://ai-gateway.vercel.sh/v4/ai/evaluation-model");
+  });
+
+  it("rejects missing or malformed answers so compaction falls back", async () => {
+    const asker = createJevAsker({
+      apiKey: "gw-key",
+      gateway: true,
+      requestTimeoutMs: 0,
+      fetchImpl: realFetch(200, { answers: { q: { type: "choice", choice: "yes" } } }),
+    });
+    await expect(asker.ask("s", { q: { type: "noul", instructions: "x" } })).rejects.toThrow(/Invalid gateway answer/);
+    const failing = createJevAsker({
+      apiKey: "gw-key",
+      gateway: true,
+      requestTimeoutMs: 0,
+      fetchImpl: realFetch(500, { error: "boom" }),
+    });
+    await expect(failing.ask("s", { q: { type: "noul", instructions: "x" } })).rejects.toThrow(/Gateway request failed \(500\)/);
+  });
+
+  it("noul passthrough still works for direct TypeSafe contracts", async () => {
+    const asker = createJevAsker({
+      apiKey: "gw-key",
+      gateway: true,
+      requestTimeoutMs: 0,
+      fetchImpl: realFetch(200, { answers: { q: { noul: 0.8 } } }),
+    });
+    const response = await asker.ask("s", { q: { type: "noul", instructions: "x" } });
+    expect(response.answers.q).toEqual({ type: "noul", noul: 0.8 });
+  });
+});
+
 describe("abort classification", () => {
   it("recognizes cancellation and timeout errors", () => {
     const abort = new DOMException("aborted", "AbortError");

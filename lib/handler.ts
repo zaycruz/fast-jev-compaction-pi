@@ -104,6 +104,39 @@ export async function compactFromSession(
 }
 
 /**
+ * The Vercel AI Gateway normalizes evaluation models: questions arrive as
+ * `boolean` (not TypeSafe's native `noul`) and the model id travels in a
+ * header. These two functions adapt the vendored core's shapes in both
+ * directions, so the rest of the pipeline stays untouched.
+ */
+const GATEWAY_PROTOCOL_VERSION = "0.0.1";
+const GATEWAY_SPEC_VERSION = "4";
+
+export function gatewayRequestBody(questions: JevQuestions): {
+  questions: Record<string, unknown>;
+} {
+  const mapped: Record<string, unknown> = {};
+  for (const [name, question] of Object.entries(questions)) {
+    mapped[name] =
+      question.type === "noul"
+        ? { type: "boolean", instructions: question.instructions, criteria: question.criteria }
+        : question;
+  }
+  return { questions: mapped };
+}
+
+export function gatewayAnswerToNoul(answer: unknown, name: string): number {
+  if (answer && typeof answer === "object") {
+    const record = answer as Record<string, unknown>;
+    for (const key of ["noul", "probability", "score"]) {
+      const value = record[key];
+      if (typeof value === "number" && Number.isFinite(value)) return value;
+    }
+  }
+  throw new Error(`Invalid gateway answer for ${name}`);
+}
+
+/**
  * Builds the Jev asker over `fetch`, honouring pi's abort signal and an
  * optional per-request timeout. `fetchImpl` is injectable for tests.
  */
@@ -114,6 +147,7 @@ export function createJevAsker(
     baseUrl?: string;
     requestTimeoutMs?: number;
     fetchImpl?: typeof fetch;
+    gateway?: boolean;
   },
   signal?: AbortSignal,
 ): JevAsker {
@@ -125,13 +159,33 @@ export function createJevAsker(
   const fetcher = options.fetchImpl ?? fetch;
   const apiKey: string = options.apiKey;
   const timeoutMs = finite(options.requestTimeoutMs, DEFAULT_TIMEOUT_MS);
+  const gateway = (options as { gateway?: boolean }).gateway === true;
   return {
     async ask(state: JevState, questions: JevQuestions): Promise<JevResponse> {
-      const request = buildJevRequest(
-        { apiKey, model: options.model, baseUrl: options.baseUrl },
-        state,
-        questions,
-      );
+      let url: string;
+      let headers: Record<string, string>;
+      let body: string;
+      if (gateway) {
+        url = `${(options.baseUrl ?? "https://ai-gateway.vercel.sh/v4/ai").replace(/\/$/, "")}/evaluation-model`;
+        headers = {
+          authorization: `Bearer ${apiKey}`,
+          "ai-gateway-protocol-version": GATEWAY_PROTOCOL_VERSION,
+          "ai-gateway-auth-method": "api-key",
+          "ai-model-id": options.model ?? "typesafe-ai/jev",
+          "ai-evaluation-model-specification-version": GATEWAY_SPEC_VERSION,
+          "content-type": "application/json",
+        };
+        body = JSON.stringify({ state, questions: gatewayRequestBody(questions).questions });
+      } else {
+        const request = buildJevRequest(
+          { apiKey, model: options.model, baseUrl: options.baseUrl },
+          state,
+          questions,
+        );
+        url = request.url;
+        headers = request.headers;
+        body = request.body;
+      }
       let abort = signal;
       const signalCtor = AbortSignal as unknown as {
         any?: (...signals: AbortSignal[]) => AbortSignal;
@@ -140,13 +194,40 @@ export function createJevAsker(
         const timeout = AbortSignal.timeout(timeoutMs);
         abort = signal ? AbortSignal.any([signal, timeout]) : timeout;
       }
-      const response = await fetcher(request.url, {
-        method: request.method,
-        headers: request.headers,
-        body: request.body,
+      const response = await fetcher(url, {
+        method: "POST",
+        headers,
+        body,
         signal: abort,
       });
-      return parseJevResponse(response.status, response.ok, await response.text());
+      const text = await response.text();
+      if (!gateway) return parseJevResponse(response.status, response.ok, text);
+      if (!response.ok) {
+        throw new Error(`Gateway request failed (${response.status}): ${text.slice(0, 200)}`);
+      }
+      let parsed: unknown;
+      try {
+        parsed = JSON.parse(text);
+      } catch {
+        throw new Error("Gateway returned malformed JSON");
+      }
+      if (!parsed || typeof parsed !== "object" || !(parsed as Record<string, unknown>).answers) {
+        throw new Error("Gateway response is missing answers");
+      }
+      const raw = parsed as {
+        answers: Record<string, unknown>;
+        usage?: { inputTokens?: unknown; outputTokens?: unknown };
+      };
+      const answers: Record<string, { type?: "noul"; noul: number }> = {};
+      for (const [name, answer] of Object.entries(raw.answers)) {
+        answers[name] = { type: "noul", noul: gatewayAnswerToNoul(answer, name) };
+      }
+      const inputTokens = typeof raw.usage?.inputTokens === "number" ? raw.usage.inputTokens : 0;
+      const outputTokens = typeof raw.usage?.outputTokens === "number" ? raw.usage.outputTokens : 0;
+      return {
+        answers,
+        usage: { input_tokens: inputTokens, output_tokens: outputTokens },
+      };
     },
   };
 }

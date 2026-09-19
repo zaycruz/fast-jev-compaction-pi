@@ -69,7 +69,7 @@ export default function fastJevCompaction(pi: ExtensionAPI) {
         firstKeptEntryId: preparation.firstKeptEntryId,
         tokensBefore: preparation.tokensBefore,
         config,
-        asker: createJevAsker({ ...config, apiKey }, signal),
+        asker: createJevAsker({ ...config, apiKey, gateway: config.gateway === true }, signal),
       });
 
       if (!outcome.ok) {

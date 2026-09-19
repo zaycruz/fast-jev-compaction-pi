@@ -15,7 +15,7 @@
  * Usage: node bench/run-bench.mjs [sizes…]   e.g. node bench/run-bench.mjs small medium large
  * Env: BENCH_SUM_MODEL (default glm-5.3-flash-sglang), MOCK_LATENCY_MS (Jev mock, default 500).
  */
-import { spawn } from "node:child_process";
+import { spawn, execFileSync } from "node:child_process";
 import { copyFileSync, createWriteStream, existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir, homedir } from "node:os";
 import { join, dirname } from "node:path";
@@ -341,16 +341,33 @@ async function main() {
   mkdirSync(AGENT_DIR, { recursive: true });
   console.log(`benchmark root: ${root}\n`);
 
-  // One mock Jev server for the whole run.
+  // Fast-jev arm: real typesafe-ai/jev via the Vercel AI Gateway (default),
+  // or the policy mock when BENCH_JEV_REAL is unset/0.
+  const REAL_JEV = process.env.BENCH_JEV_REAL === "1";
+  let jevApiKey = process.env.BENCH_JEV_API_KEY ?? "";
+  if (REAL_JEV && jevApiKey.length === 0) {
+    for (let attempt = 0; attempt < 3 && jevApiKey.length === 0; attempt += 1) {
+      jevApiKey = execFileSync("op", ["item", "get", "VERCEL_AI_GATEWAY_API_KEY", "--fields", "credential", "--reveal"], {
+        encoding: "utf8",
+        stdio: ["ignore", "pipe", "ignore"],
+      }).trim();
+      if (jevApiKey.length === 0) await sleep(2000);
+    }
+    if (jevApiKey.length === 0) throw new Error("could not read VERCEL_AI_GATEWAY_API_KEY from 1Password (op)");
+  }
   const jevLog = join(root, "jev-requests.json");
-  const mock = spawn("node", [join(ROOT, "bench", "mock-jev.mjs")], {
-    env: { ...process.env, MOCK_LATENCY_MS: process.env.MOCK_LATENCY_MS ?? "500", MOCK_LOG: jevLog },
-    stdio: ["ignore", "pipe", "inherit"],
-  });
-  const jevPort = await new Promise((resolve, reject) => {
-    mock.stdout.on("data", (chunk) => resolve(String(chunk).trim()));
-    mock.on("error", reject);
-  });
+  let mock = null;
+  let jevPort = "0";
+  if (!REAL_JEV) {
+    mock = spawn("node", [join(ROOT, "bench", "mock-jev.mjs")], {
+      env: { ...process.env, MOCK_LATENCY_MS: process.env.MOCK_LATENCY_MS ?? "500", MOCK_LOG: jevLog },
+      stdio: ["ignore", "pipe", "inherit"],
+    });
+    jevPort = await new Promise((resolve, reject) => {
+      mock.stdout.on("data", (chunk) => resolve(String(chunk).trim()));
+      mock.on("error", reject);
+    });
+  }
 
   const projectCwd = join(root, "project");
   const sessionDir = join(root, "sessions");
@@ -362,12 +379,22 @@ async function main() {
   );
   writeFileSync(
     join(projectCwd, ".pi", "fast-jev-compaction.json"),
-    JSON.stringify({
-      apiKey: "bench-key",
-      baseUrl: `http://127.0.0.1:${jevPort}/v1/systemone`,
-      model: "jev-bench",
-      requestTimeoutMs: 30000,
-    }),
+    JSON.stringify(
+      REAL_JEV
+        ? {
+            apiKey: jevApiKey,
+            baseUrl: "https://ai-gateway.vercel.sh/v4/ai",
+            model: "typesafe-ai/jev",
+            gateway: true,
+            requestTimeoutMs: 30000,
+          }
+        : {
+            apiKey: "bench-key",
+            baseUrl: `http://127.0.0.1:${jevPort}/v1/systemone`,
+            model: "jev-bench",
+            requestTimeoutMs: 30000,
+          },
+    ),
   );
 
   for (const size of SIZES) {
@@ -405,7 +432,7 @@ async function main() {
         });
       } catch (error) {
         console.log(`  [${size}/${arm}] SKIPPED: ${String(error).slice(0, 120)}`);
-        results.push({ size, arm, label: arm === "fastjev" ? "fast-jev (sim Jev)" : `built-in (${SUM_MODEL}, summary)`, failed: true, errorMessage: String(error), qa: [] });
+        results.push({ size, arm, label: arm === "fastjev" ? (REAL_JEV ? "fast-jev (real)" : "fast-jev (sim Jev)") : `built-in (${SUM_MODEL}, summary)`, failed: true, errorMessage: String(error), qa: [] });
         continue;
       }
       const analysis = analyze(run.sessionFile, markers, run.eventResult);
@@ -426,10 +453,10 @@ async function main() {
       // (chars/4 estimate from the mock); built-in = real usage the session
       // model reported for the summarization (reasoning tokens included).
       const compactionCost = {
-        requests: arm === "fastjev" ? (analysis.compaction?.details?.fastJev?.stats?.requests ?? 0) : 1,
+        requests: analysis.compaction?.details?.fastJev?.stats?.requests ?? (arm === "builtin" ? 1 : 0),
         promptTokens: analysis.compaction?.usage?.input ?? 0,
         completionTokens: analysis.compaction?.usage?.output ?? 0,
-        estimated: arm === "fastjev",
+        estimated: arm === "fastjev" && !REAL_JEV,
       };
       const qaCost = {
         promptTokens: qaRun?.inputTokens ?? 0,
@@ -440,7 +467,7 @@ async function main() {
       results.push({
         size,
         arm,
-        label: arm === "fastjev" ? "fast-jev (sim Jev)" : `built-in (${SUM_MODEL}, summary)`,
+        label: arm === "fastjev" ? (REAL_JEV ? "fast-jev (real)" : "fast-jev (sim Jev)") : `built-in (${SUM_MODEL}, summary)`,
         compactionMs: Math.round(run.ms),
         failed: run.failed,
         errorMessage: run.errorMessage,
@@ -463,9 +490,9 @@ async function main() {
     }
   }
 
-  mock.kill("SIGTERM");
+  if (mock) mock.kill("SIGTERM");
   const outFile = join(ROOT, "bench", `results-${Date.now()}.json`);
-  writeFileSync(outFile, JSON.stringify({ results, jevLog, model: SUM_MODEL }, null, 2));
+  writeFileSync(outFile, JSON.stringify({ results, jevLog, model: SUM_MODEL, realJev: REAL_JEV }, null, 2));
   console.log(`\nfull results: ${outFile}`);
   renderReport(results);
 }
