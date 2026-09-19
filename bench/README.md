@@ -127,6 +127,31 @@ Instead of tombstoning every dropped call, a third Jev question per call
 asks whether the input itself is worth keeping verbatim. Measured over two
 real-Jev runs:
 
+- **Real Jev discriminates:** routine listing inputs scored 0.12-0.15 while
+  fact-bearing inputs (reads 0.28-0.31, edits 0.33-0.39, commands
+  0.24-0.25) score higher — a usable gap. At `inputRetentionThreshold: 0.2`
+  the gate dropped routine calls entirely (context after fell from
+  1,084 to 396 tokens in one small session, 2,856 to 1,002 in a medium
+  one) while keeping all fact-bearing inputs in the same run's large cell
+  (commands 12/12, paths 14/14).
+- **Per-run sampling variance is real:** probabilities move +-0.1 between
+  runs, so a fixed 0.2 threshold occasionally drops individual fact-bearing
+  inputs (in one run both small and medium command inputs fell below it).
+  Guaranteed retention requires `inputRetention: "always"`.
+- **The fallback valve engages under real latency spikes:** two of the
+  gated run's cells hit the 30 s request timeout during a gateway slowdown
+  and fell back to native summarization (150 s and 23 s cells) — the
+  safety design held, but gateway latency is not an SLA.
+- **Default is `"always"`**: deterministic retention. `"jev"` is the
+  context-minimal option for users who accept probabilistic retention and
+  the extra question per call (~60 tokens).
+
+### Jev-gated input retention (`inputRetention: "jev"`)
+
+Instead of tombstoning every dropped call, a third Jev question per call
+asks whether the input itself is worth keeping verbatim. Measured over two
+real-Jev runs:
+
 - **Real Jev discriminates:** routine listing inputs scored 0.12–0.15 while
   fact-bearing inputs (reads 0.28–0.31, edits 0.33–0.39, commands 0.24–0.25)
   score higher — a usable gap. At `inputRetentionThreshold: 0.2` the gate
