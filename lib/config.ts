@@ -58,6 +58,21 @@ export interface FastJevConfig {
    */
   preserveCallInputs?: boolean;
   /**
+   * How dropped calls decide whether to keep a one-line record of the input:
+   * `"always"` tombstones every Jev-dropped call; `"jev"` asks Jev a third
+   * question per call ("is this input worth keeping verbatim?") and only
+   * tombstones calls where the answer clears `keepThreshold`. Only matters
+   * when `preserveCallInputs` is on. Default `"always"`.
+   */
+  inputRetention?: "always" | "jev";
+  /**
+   * Keep-probability threshold for the input-retention question. Calibrated
+   * at 0.2: in the benchmark, routine listing inputs scored 0.14-0.15 while
+   * fact-bearing inputs (reads, commands, edits) scored 0.23-0.39. Default
+   * `0.2`.
+   */
+  inputRetentionThreshold?: number;
+  /**
    * When a failing tool result (pi marks it `isError`) is dropped or
    * truncated, keep its final N characters (the error and stack usually live
    * at the end of the output) instead of losing them. `0` keeps tails off.
@@ -82,6 +97,7 @@ function readConfigFile(path: string): FastJevConfig | undefined {
 }
 
 const NUMERIC_KEYS = [
+  "inputRetentionThreshold",
   "preserveErrorTails",
   "keepThreshold",
   "preserveRecentMessages",
@@ -106,6 +122,9 @@ export function sanitizeConfig(raw: FastJevConfig): FastJevConfig {
   }
   if (raw.gateway === true) config.gateway = true;
   if (raw.preserveCallInputs === true) config.preserveCallInputs = true;
+  if (raw.inputRetention === "jev" || raw.inputRetention === "always") {
+    config.inputRetention = raw.inputRetention;
+  }
   return config;
 }
 

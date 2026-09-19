@@ -91,7 +91,9 @@ Optional settings live in `~/.pi/agent/fast-jev-compaction.json` (global) or
   "requestTimeoutMs": 120000,
   "goal": "optional standing task description",
   "preserveCallInputs": true,
-  "preserveErrorTails": 1200
+  "preserveErrorTails": 1200,
+  "inputRetention": "always",
+  "inputRetentionThreshold": 0.2
 }
 ```
 
@@ -177,8 +179,11 @@ LLM summary. Pure mode gives the smallest context but drops old tool calls
 `preserveCallInputs: true` + `preserveErrorTails: 1200` — keeps one-line
 records of dropped calls and the tails of failing results: every exact
 command, path, and error code survives with real text and stack, memory QA
-ties the built-in summary, and compaction stays ~50× faster. Caveats and an
-adversarial review of the benchmark itself:
+ties the built-in summary, and compaction stays ~50× faster. `inputRetention: "jev"` additionally asks Jev per call whether the input
+itself is worth keeping — it discriminates routine from fact-bearing calls
+(routine inputs score 0.12–0.15, facts 0.20–0.29) and shrinks context
+further, at the price of probabilistic retention. Caveats and an adversarial
+review of the benchmark itself:
 [bench/ADVERSARIAL-REVIEW.md](bench/ADVERSARIAL-REVIEW.md). Run it yourself
 with `BENCH_JEV_REAL=1 node bench/run-bench.mjs small medium large`.
 

@@ -533,6 +533,57 @@ describe("preserveCallInputs tuning", () => {
   });
 });
 
+describe("inputRetention: jev", () => {
+  function gatedRun(answers: (name: string) => number) {
+    return runFastJevCompaction({
+      spanMessages: span(),
+      firstKeptEntryId: "k",
+      tokensBefore: 1,
+      config: {
+        apiKey: "k",
+        preserveCallInputs: true,
+        inputRetention: "jev",
+        preserveErrorTails: 0,
+      },
+      asker: fakeJev(answers),
+    });
+  }
+
+  it("input worth keeping: dropped call is tombstoned with its input", async () => {
+    const outcome = await gatedRun((name) => (name.startsWith("input_") ? 0.9 : 0.2));
+    expect(outcome.ok).toBe(true);
+    expect(outcome.entry!.summary).toContain('[tool call read] {"file_path":"a.ts"}');
+  });
+
+  it("routine input: dropped call disappears entirely", async () => {
+    const outcome = await gatedRun((name) => (name.startsWith("input_") ? 0.1 : 0.2));
+    expect(outcome.ok).toBe(true);
+    expect(outcome.entry!.summary).not.toContain("[tool call read]");
+    expect(outcome.entry!.summary).not.toContain('"file_path":"a.ts"');
+    expect(outcome.result!.stats.callsDropped).toBe(1);
+  });
+
+  it("missing input answer abstains to keep (always-mode behavior)", async () => {
+    const asker: JevAsker = {
+      ask: async (_state, questions) => ({
+        answers: Object.fromEntries(
+          Object.keys(questions)
+            .filter((q) => !q.startsWith("input_"))
+            .map((q) => [q, { type: "noul", noul: 0.2 }]),
+        ),
+      }),
+    };
+    const outcome = await runFastJevCompaction({
+      spanMessages: span(),
+      firstKeptEntryId: "k",
+      tokensBefore: 1,
+      config: { apiKey: "k", preserveCallInputs: true, inputRetention: "jev" },
+      asker,
+    });
+    expect(outcome.entry!.summary).toContain('[tool call read]');
+  });
+});
+
 describe("gateway transport", () => {
   const realFetch = (status: number, body: unknown) =>
     (async (_url: string | URL | Request, init?: RequestInit) => {

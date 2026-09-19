@@ -96,11 +96,16 @@ manager.appendMessage({
 for (let t = 0; t < TURNS; t += 1) {
   turn = t;
   const verb = VERBS[t % VERBS.length];
-  const kind = pick(["read", "read", "bash", "read", "edit", "bash"]);
+  // Every fifth turn is a routine listing: no markers, tiny output — the
+  // input-retention gate should let these go entirely.
+  const kind = t % 5 === 2 ? "ls" : pick(["read", "read", "bash", "read", "edit", "bash"]);
   const calls = [];
   let resultText = "";
 
-  if (kind === "read") {
+  if (kind === "ls") {
+    calls.push({ type: "toolCall", id: `c${t}`, name: "ls", arguments: { path: "/var/data" } });
+    resultText = "cache-a\ncache-b\ntmp\n";
+  } else if (kind === "read") {
     const path = `src/atlas-${hex(6)}/engine-${hex(4)}.ts`;
     addMarker("path", path, t, 0);
     calls.push({ type: "toolCall", id: `c${t}`, name: "read", arguments: { path } });

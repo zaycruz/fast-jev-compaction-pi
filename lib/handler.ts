@@ -337,13 +337,24 @@ export function describeOutcome(outcome: CompactionOutcome): string {
   }; state ~${stats.stateTokens} tokens (${stats.stateStage}) in ${stats.requests} request(s)`;
 }
 
-/** One batch of questions to Jev, mirroring the vendored `compact` loop. */
+const INPUT_QUESTION = (call: { tool: string; input: Record<string, unknown> }): JevQuestions[string] => ({
+  type: "noul",
+  instructions: `The input of this ${call.tool} call is worth keeping verbatim in the compacted history: it records exact details (paths, commands, identifiers) the assistant would need later and could not cheaply reconstruct by re-running the tool`,
+});
+
+/** One batch of questions to Jev, mirroring the vendored `compact` loop and
+ * adding the per-call input-retention question when Jev gates tombstoning. */
 async function askQuestionsBatch(
   asker: JevAsker,
   state: Parameters<JevAsker["ask"]>[0],
   batch: readonly Parameters<typeof questionsFor>[0][],
-): Promise<Map<string, { keepCall: number; keepResult: number }>> {
-  const questions: JevQuestions = Object.assign({}, ...batch.map(questionsFor));
+  askInput: boolean,
+): Promise<Map<string, { keepCall: number; keepResult: number; keepInput: number | undefined }>> {
+  const questions: JevQuestions = {};
+  for (const call of batch) {
+    Object.assign(questions, questionsFor(call));
+    if (askInput) questions[`input_${call.id}`] = INPUT_QUESTION(call);
+  }
   const { answers } = await asker.ask(state, questions);
   return new Map(
     batch.map((call) => [
@@ -351,9 +362,20 @@ async function askQuestionsBatch(
       {
         keepCall: noulAnswer(answers, `call_${call.id}`),
         keepResult: noulAnswer(answers, `result_${call.id}`),
+        keepInput: askInput
+          ? noulAnswerOrAbstain(answers, `input_${call.id}`)
+          : undefined,
       },
     ]),
   );
+}
+
+/** A missing answer abstains (input kept, matching "always"); a malformed
+ * one throws like every other answer. */
+function noulAnswerOrAbstain(answers: Record<string, unknown>, name: string): number {
+  const answer = (answers as Record<string, Record<string, unknown>>)[name];
+  if (answer === undefined) return 1;
+  return noulAnswer(answers as Record<string, { type?: "noul"; noul: number }>, name);
 }
 
 function tombstoneResultText(
@@ -476,6 +498,8 @@ async function compactWithTuning(
   options: Parameters<typeof resolveOptions>[0],
   preserveCallInputs: boolean,
   errorTailChars: number,
+  inputRetention: "always" | "jev",
+  inputRetentionThreshold: number,
 ): Promise<CompactResult> {
   const started = Date.now();
   const resolved = resolveOptions(options);
@@ -485,26 +509,35 @@ async function compactWithTuning(
 
   let fitted = { tokens: 0, stage: "" };
   let requestCount = 0;
-  const answers = new Map<string, { keepCall: number; keepResult: number }>();
+  const answers = new Map<string, { keepCall: number; keepResult: number; keepInput: number | undefined }>();
+  const askInput = preserveCallInputs && inputRetention === "jev";
   if (candidates.length > 0) {
     const state = fitState(messages, calls, resolved);
     fitted = state;
     const batches = batchCalls(candidates, state.tokens, resolved);
     requestCount = batches.length;
     const answered = await Promise.all(
-      batches.map((batch) => askQuestionsBatch(asker, state.state, batch)),
+      batches.map((batch) => askQuestionsBatch(asker, state.state, batch, askInput)),
     );
     for (const map of answered) {
       for (const [id, answer] of map) answers.set(id, answer);
     }
   }
 
-  const decisions = calls.map((call) =>
-    decideCall(call, answers.get(call.id) ?? { keepCall: 1, keepResult: 1 }, resolved),
-  );
+  const decisions = calls.map((call) => {
+    const answer = answers.get(call.id) ?? { keepCall: 1, keepResult: 1, keepInput: undefined };
+    const decision = decideCall(call, answer, resolved);
+    return answer.keepInput !== undefined ? { ...decision, keepInput: answer.keepInput } : decision;
+  });
   const tombstone = new Set<string>(
     preserveCallInputs
-      ? decisions.filter((d) => d.action === "drop_call").map((d) => calls.find((c) => c.id === d.id)?.tool_use_id ?? "")
+      ? decisions
+          .filter((d) => d.action === "drop_call")
+          .filter((d) => {
+            const keepInput = (d as { keepInput?: number }).keepInput;
+            return keepInput === undefined || keepInput >= inputRetentionThreshold;
+          })
+          .map((d) => calls.find((c) => c.id === d.id)?.tool_use_id ?? "")
       : [],
   );
   tombstone.delete("");
@@ -572,6 +605,8 @@ export async function runFastJevCompaction(run: CompactionRun): Promise<Compacti
     options,
     run.config.preserveCallInputs === true,
     finite(run.config.preserveErrorTails, 0),
+    run.config.inputRetention ?? "always",
+    finite(run.config.inputRetentionThreshold, 0.2),
   );
   void reductionRatio;
 
