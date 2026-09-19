@@ -391,6 +391,7 @@ async function main() {
             preserveCallInputs: PRESERVE_INPUTS,
             inputRetention: process.env.BENCH_INPUT_RETENTION === "jev" ? "jev" : "always",
             inputRetentionThreshold: Number(process.env.BENCH_INPUT_THRESHOLD ?? 0.2),
+            routing: process.env.BENCH_ROUTING === "jev" ? "jev" : "reactive",
             preserveErrorTails: ERROR_TAILS,
             requestTimeoutMs: 30000,
           }
@@ -438,7 +439,7 @@ async function main() {
         });
       } catch (error) {
         console.log(`  [${size}/${arm}] SKIPPED: ${String(error).slice(0, 120)}`);
-        results.push({ size, arm, label: arm === "fastjev" ? (REAL_JEV ? (PRESERVE_INPUTS ? (process.env.BENCH_INPUT_RETENTION === "jev" ? process.env.BENCH_INPUT_RETENTION === "jev" ? `fast-jev (jev-gated @${process.env.BENCH_INPUT_THRESHOLD ?? 0.2})` : "fast-jev (jev-gated)" : ERROR_TAILS > 0 ? "fast-jev (tuned+tails)" : "fast-jev (tuned)") : "fast-jev (real)") : "fast-jev (sim Jev)") : `built-in (${SUM_MODEL}, summary)`, failed: true, errorMessage: String(error), qa: [] });
+        results.push({ size, arm, label: arm === "fastjev" ? (REAL_JEV ? (PRESERVE_INPUTS ? (process.env.BENCH_INPUT_RETENTION === "jev" ? `fast-jev (gated @${process.env.BENCH_INPUT_THRESHOLD ?? 0.2})` : ERROR_TAILS > 0 ? "fast-jev (tuned+tails)" : "fast-jev (tuned)") : "fast-jev (real)") : "fast-jev (sim Jev)") + (process.env.BENCH_ROUTING === "jev" ? " + route" : "") : `built-in (${SUM_MODEL}, summary)`, failed: true, errorMessage: String(error), qa: [] });
         continue;
       }
       const analysis = analyze(run.sessionFile, markers, run.eventResult);
@@ -473,7 +474,7 @@ async function main() {
       results.push({
         size,
         arm,
-        label: arm === "fastjev" ? (REAL_JEV ? (PRESERVE_INPUTS ? (process.env.BENCH_INPUT_RETENTION === "jev" ? process.env.BENCH_INPUT_RETENTION === "jev" ? `fast-jev (jev-gated @${process.env.BENCH_INPUT_THRESHOLD ?? 0.2})` : "fast-jev (jev-gated)" : ERROR_TAILS > 0 ? "fast-jev (tuned+tails)" : "fast-jev (tuned)") : "fast-jev (real)") : "fast-jev (sim Jev)") : `built-in (${SUM_MODEL}, summary)`,
+        label: arm === "fastjev" ? (REAL_JEV ? (PRESERVE_INPUTS ? (process.env.BENCH_INPUT_RETENTION === "jev" ? `fast-jev (gated @${process.env.BENCH_INPUT_THRESHOLD ?? 0.2})` : ERROR_TAILS > 0 ? "fast-jev (tuned+tails)" : "fast-jev (tuned)") : "fast-jev (real)") : "fast-jev (sim Jev)") + (process.env.BENCH_ROUTING === "jev" ? " + route" : "") : `built-in (${SUM_MODEL}, summary)`,
         compactionMs: Math.round(run.ms),
         failed: run.failed,
         errorMessage: run.errorMessage,

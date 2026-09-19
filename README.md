@@ -93,7 +93,9 @@ Optional settings live in `~/.pi/agent/fast-jev-compaction.json` (global) or
   "preserveCallInputs": true,
   "preserveErrorTails": 1200,
   "inputRetention": "always",
-  "inputRetentionThreshold": 0.2
+  "inputRetentionThreshold": 0.2,
+  "routing": "reactive",
+  "routingThreshold": 0.5
 }
 ```
 
@@ -179,7 +181,13 @@ LLM summary. Pure mode gives the smallest context but drops old tool calls
 `preserveCallInputs: true` + `preserveErrorTails: 1200` — keeps one-line
 records of dropped calls and the tails of failing results: every exact
 command, path, and error code survives with real text and stack, memory QA
-ties the built-in summary, and compaction stays ~50× faster. `inputRetention: "jev"` additionally asks Jev per call whether the input
+ties the built-in summary, and compaction stays ~50× faster. `routing: "jev"` asks Jev one question over a statistical digest of the
+span before scoring: scored pruning vs the native summary. On the benchmark
+spans it routes to scored pruning with probability 0.74-0.75 and adds about
+0.2 s; spans with no tool results skip the router entirely and go native
+for free. `routing: "reactive"` (default) keeps the current behavior: score
+first, decline to native when the reduction is too small.
+`inputRetention: "jev"` additionally asks Jev per call whether the input
 itself is worth keeping — it discriminates routine from fact-bearing calls
 (routine inputs score 0.12–0.15, facts 0.20–0.29) and shrinks context
 further, at the price of probabilistic retention. Caveats and an adversarial

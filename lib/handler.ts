@@ -78,6 +78,8 @@ export interface CompactionOutcome {
   ok: boolean;
   /** Why the extension declined; pi's built-in compaction runs instead. */
   reason?: string;
+  /** The Jev routing decision, when `routing: "jev"` asked for one. */
+  route?: { route: "scored" | "native"; probability: number };
   entry?: CompactionEntryData;
   result?: CompactResult;
   /** Character reduction on the summarized span (0..1). */
@@ -485,6 +487,84 @@ export function applyDecisionsWithTuning(
   return kept;
 }
 
+export interface SpanDigest {
+  approxTokens: number;
+  toolCalls: number;
+  toolResultChars: number;
+  textChars: number;
+  userTextChars: number;
+  assistantTextChars: number;
+  errorResults: number;
+  distinctTools: string[];
+}
+
+/** Cheap statistical shape of the span — the routing state. */
+export function spanDigest(messages: readonly Message[]): SpanDigest {
+  let toolResultChars = 0;
+  let textChars = 0;
+  let userTextChars = 0;
+  let assistantTextChars = 0;
+  let errorResults = 0;
+  let toolCalls = 0;
+  const tools = new Set<string>();
+  let allChars = 0;
+  for (const message of messages) {
+    for (const tool of message.toolUses) {
+      toolCalls += 1;
+      tools.add(tool.tool);
+      try {
+        allChars += JSON.stringify(tool.input).length;
+      } catch {
+        allChars += 20;
+      }
+    }
+    for (const result of message.toolResults ?? []) {
+      toolResultChars += result.text.length;
+      allChars += result.text.length;
+      if (result.isError) errorResults += 1;
+    }
+    if (message.text.length > 0) {
+      textChars += message.text.length;
+      allChars += message.text.length;
+      if (message.role === "user") userTextChars += message.text.length;
+      else assistantTextChars += message.text.length;
+    }
+  }
+  return {
+    approxTokens: Math.ceil(allChars / 4),
+    toolCalls,
+    toolResultChars,
+    textChars,
+    userTextChars,
+    assistantTextChars,
+    errorResults,
+    distinctTools: [...tools].sort(),
+  };
+}
+
+const ROUTING_CONTEXT =
+  "A coding assistant conversation is being compacted. The digest below describes the older span statistically. Scored pruning replaces the span with a lossless transcript: user and assistant text stays verbatim, stale tool results are dropped or truncated with a re-run note, and call inputs (exact commands and paths) can be kept. An LLM narrative summary rewrites the whole span into a compact structured gist.";
+
+const ROUTING_QUESTION: JevQuestions[string] = {
+  type: "noul",
+  instructions:
+    "Continuing work from this span is better served by scored lossless pruning than by an LLM narrative summary: the span carries exact tool-derived facts and prunable tool output rather than mostly narrative text",
+};
+
+/** Asks Jev which path to take; returns the route and its probability. */
+export async function routeSpan(
+  asker: JevAsker,
+  digest: SpanDigest,
+  threshold: number,
+): Promise<{ route: "scored" | "native"; probability: number }> {
+  const { answers } = await asker.ask(
+    { context: ROUTING_CONTEXT, goal: "", history: [digest as unknown as Record<string, unknown>] },
+    { route_compaction: ROUTING_QUESTION },
+  );
+  const probability = noulAnswer(answers, "route_compaction");
+  return { route: probability >= threshold ? "scored" : "native", probability };
+}
+
 /**
  * The vendored `compact` pipeline, with two extension points: when
  * `preserveCallInputs` is on, calls Jev voted to drop entirely keep a
@@ -598,6 +678,23 @@ export async function runFastJevCompaction(run: CompactionRun): Promise<Compacti
     },
   };
 
+  let routed: { route: "scored" | "native"; probability: number } | undefined;
+  const spanHasToolResults = run.spanMessages.some((m) => (m.toolResults?.length ?? 0) > 0);
+  if (run.config.routing === "jev" && spanHasToolResults) {
+    routed = await routeSpan(asker, spanDigest(run.spanMessages), finite(run.config.routingThreshold, 0.5));
+    if (routed.route === "native") {
+      return {
+        ok: false,
+        reason: `Jev routed this span to the native summary (probability ${routed.probability.toFixed(2)})`,
+        route: routed,
+        spanReduction: 0,
+        spanMessagesBefore: run.spanMessages.length,
+        spanMessagesAfter: run.spanMessages.length,
+        usage: undefined,
+      };
+    }
+  }
+
   const transcript = buildTranscript(run.previous, run.spanMessages);
   const result = await compactWithTuning(
     transcript,
@@ -626,6 +723,7 @@ export async function runFastJevCompaction(run: CompactionRun): Promise<Compacti
     return {
       ok: false,
       reason: detail,
+      route: routed,
       result,
       spanReduction: span.ratio,
       spanMessagesBefore: span.messagesBefore,
@@ -636,6 +734,7 @@ export async function runFastJevCompaction(run: CompactionRun): Promise<Compacti
 
   return {
     ok: true,
+    route: routed,
     entry: {
       summary: renderSummary(result.messages),
       firstKeptEntryId: run.firstKeptEntryId,
@@ -648,6 +747,7 @@ export async function runFastJevCompaction(run: CompactionRun): Promise<Compacti
           messages: result.messages,
           stats: result.stats,
           decisions: result.decisions,
+          ...(routed ? { route: routed } : {}),
         },
       },
     },

@@ -66,6 +66,16 @@ export interface FastJevConfig {
    */
   inputRetention?: "always" | "jev";
   /**
+   * How the extension chooses between scored pruning and the native summary:
+   * `"reactive"` scores first and declines when the reduction is too small
+   * (current behavior); `"jev"` asks Jev a routing question over a
+   * statistical digest of the span before scoring and proceeds down the
+   * chosen path. Default `"reactive"`.
+   */
+  routing?: "reactive" | "jev";
+  /** Keep-probability threshold for the routing question. Default `0.5`. */
+  routingThreshold?: number;
+  /**
    * Keep-probability threshold for the input-retention question. Calibrated
    * at 0.2: in the benchmark, routine listing inputs scored 0.14-0.15 while
    * fact-bearing inputs (reads, commands, edits) scored 0.23-0.39. Default
@@ -97,6 +107,7 @@ function readConfigFile(path: string): FastJevConfig | undefined {
 }
 
 const NUMERIC_KEYS = [
+  "routingThreshold",
   "inputRetentionThreshold",
   "preserveErrorTails",
   "keepThreshold",
@@ -125,6 +136,7 @@ export function sanitizeConfig(raw: FastJevConfig): FastJevConfig {
   if (raw.inputRetention === "jev" || raw.inputRetention === "always") {
     config.inputRetention = raw.inputRetention;
   }
+  if (raw.routing === "jev" || raw.routing === "reactive") config.routing = raw.routing;
   return config;
 }
 

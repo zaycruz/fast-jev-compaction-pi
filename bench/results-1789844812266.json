@@ -1,0 +1,603 @@
+{
+  "results": [
+    {
+      "size": "small",
+      "arm": "fastjev",
+      "label": "fast-jev (tuned+tails) + route",
+      "compactionMs": 773,
+      "failed": false,
+      "preContextTokens": 4738,
+      "estTokensAfter": 1084,
+      "summaryChars": 4299,
+      "usage": {
+        "input": 2628,
+        "output": 315,
+        "cacheRead": 0,
+        "cacheWrite": 0,
+        "totalTokens": 2943,
+        "cost": {
+          "input": 0,
+          "output": 0,
+          "cacheRead": 0,
+          "cacheWrite": 0,
+          "total": 0
+        }
+      },
+      "stats": {
+        "messagesBefore": 20,
+        "messagesAfter": 20,
+        "charsBefore": 19327,
+        "charsAfter": 3097,
+        "calls": 8,
+        "kept": 0,
+        "resultsDropped": 8,
+        "callsDropped": 0,
+        "pinned": 0,
+        "stateTokens": 1209,
+        "stateStage": "full",
+        "requests": 1,
+        "ms": 371
+      },
+      "byKind": {
+        "constraint": {
+          "total": 3,
+          "retained": 3
+        },
+        "command": {
+          "total": 2,
+          "retained": 2
+        },
+        "path": {
+          "total": 3,
+          "retained": 3
+        }
+      },
+      "spanOnly": {
+        "constraint": {
+          "total": 3,
+          "retained": 3
+        },
+        "command": {
+          "total": 2,
+          "retained": 2
+        },
+        "path": {
+          "total": 3,
+          "retained": 3
+        }
+      },
+      "qa": [
+        {
+          "question": "Reply with ONLY the exact path we are never allowed to modify directly, nothing else. Do not use tools.",
+          "expected": "var/ingest-9534.db",
+          "ms": 636.1371669999999,
+          "answer": "var/ingest-9534.db",
+          "correct": true
+        },
+        {
+          "question": "Reply with ONLY the FIRST cache-flush command that was run earlier in the session (the full curl line), nothing else. Do not use tools.",
+          "expected": "curl -s http://edge-b3e8.internal/v2/flush-4779 | jq '.counts'",
+          "ms": 719.8122089999997,
+          "answer": "curl -s http://edge-b3e8.internal/v2/flush-4779 | jq '.counts'",
+          "correct": true
+        }
+      ],
+      "cost": {
+        "compaction": {
+          "requests": 1,
+          "promptTokens": 2628,
+          "completionTokens": 315,
+          "estimated": false
+        },
+        "qa": {
+          "promptTokens": 1927,
+          "completionTokens": 205,
+          "estimated": false
+        }
+      }
+    },
+    {
+      "size": "small",
+      "arm": "builtin",
+      "label": "built-in (glm-5.3-flash-sglang, summary)",
+      "compactionMs": 11422,
+      "failed": false,
+      "preContextTokens": 4738,
+      "estTokensAfter": 1132,
+      "summaryChars": 4491,
+      "usage": {
+        "input": 4157,
+        "output": 2124,
+        "cacheRead": 0,
+        "cacheWrite": 0,
+        "reasoning": 0,
+        "totalTokens": 6281,
+        "cost": {
+          "input": 0,
+          "output": 0,
+          "cacheRead": 0,
+          "cacheWrite": 0,
+          "total": 0
+        }
+      },
+      "byKind": {
+        "constraint": {
+          "total": 3,
+          "retained": 3
+        },
+        "command": {
+          "total": 2,
+          "retained": 2
+        },
+        "path": {
+          "total": 3,
+          "retained": 3
+        }
+      },
+      "spanOnly": {
+        "constraint": {
+          "total": 3,
+          "retained": 3
+        },
+        "command": {
+          "total": 2,
+          "retained": 2
+        },
+        "path": {
+          "total": 3,
+          "retained": 3
+        }
+      },
+      "qa": [
+        {
+          "question": "Reply with ONLY the exact path we are never allowed to modify directly, nothing else. Do not use tools.",
+          "expected": "var/ingest-9534.db",
+          "ms": 635.536333,
+          "answer": "var/ingest-9534.db",
+          "correct": true
+        },
+        {
+          "question": "Reply with ONLY the FIRST cache-flush command that was run earlier in the session (the full curl line), nothing else. Do not use tools.",
+          "expected": "curl -s http://edge-b3e8.internal/v2/flush-4779 | jq '.counts'",
+          "ms": 726.0240420000009,
+          "answer": "curl -s http://edge-b3e8.internal/v2/flush-4779 | jq '.counts'",
+          "correct": true
+        }
+      ],
+      "cost": {
+        "compaction": {
+          "requests": 1,
+          "promptTokens": 4157,
+          "completionTokens": 2124,
+          "estimated": false
+        },
+        "qa": {
+          "promptTokens": 3228,
+          "completionTokens": 150,
+          "estimated": false
+        }
+      }
+    },
+    {
+      "size": "medium",
+      "arm": "fastjev",
+      "label": "fast-jev (tuned+tails) + route",
+      "compactionMs": 696,
+      "failed": false,
+      "preContextTokens": 13019,
+      "estTokensAfter": 2856,
+      "summaryChars": 11387,
+      "usage": {
+        "input": 4709,
+        "output": 693,
+        "cacheRead": 0,
+        "cacheWrite": 0,
+        "totalTokens": 5402,
+        "cost": {
+          "input": 0,
+          "output": 0,
+          "cacheRead": 0,
+          "cacheWrite": 0,
+          "total": 0
+        }
+      },
+      "stats": {
+        "messagesBefore": 42,
+        "messagesAfter": 42,
+        "charsBefore": 52962,
+        "charsAfter": 9235,
+        "calls": 18,
+        "kept": 0,
+        "resultsDropped": 18,
+        "callsDropped": 0,
+        "pinned": 0,
+        "stateTokens": 2395,
+        "stateStage": "full",
+        "requests": 1,
+        "ms": 335
+      },
+      "byKind": {
+        "constraint": {
+          "total": 5,
+          "retained": 5
+        },
+        "path": {
+          "total": 7,
+          "retained": 7
+        },
+        "command": {
+          "total": 6,
+          "retained": 6
+        },
+        "error": {
+          "total": 2,
+          "retained": 1
+        }
+      },
+      "spanOnly": {
+        "constraint": {
+          "total": 5,
+          "retained": 5
+        },
+        "path": {
+          "total": 7,
+          "retained": 7
+        },
+        "command": {
+          "total": 6,
+          "retained": 6
+        },
+        "error": {
+          "total": 2,
+          "retained": 1
+        }
+      },
+      "qa": [
+        {
+          "question": "Earlier in this session some ingest job crashed. Reply with ONLY the FIRST fatal error code that appeared in the session (the FATAL 0x… token), nothing else. Do not use tools.",
+          "expected": "FATAL 0x96138540",
+          "ms": 1301.9405420000003,
+          "answer": "FATAL 0x96138540",
+          "correct": true
+        },
+        {
+          "question": "Reply with ONLY the exact path we are never allowed to modify directly, nothing else. Do not use tools.",
+          "expected": "var/ingest-0ded.db",
+          "ms": 432.73766700000124,
+          "answer": "var/ingest-0ded.db",
+          "correct": true
+        },
+        {
+          "question": "Reply with ONLY the FIRST cache-flush command that was run earlier in the session (the full curl line), nothing else. Do not use tools.",
+          "expected": "curl -s http://edge-5f82.internal/v3/flush-4c46 | jq '.counts'",
+          "ms": 693.1654170000002,
+          "answer": "curl -s http://edge-5f82.internal/v3/flush-4c46 | jq '.counts'",
+          "correct": true
+        }
+      ],
+      "cost": {
+        "compaction": {
+          "requests": 1,
+          "promptTokens": 4709,
+          "completionTokens": 693,
+          "estimated": false
+        },
+        "qa": {
+          "promptTokens": 3851,
+          "completionTokens": 284,
+          "estimated": false
+        }
+      }
+    },
+    {
+      "size": "medium",
+      "arm": "builtin",
+      "label": "built-in (glm-5.3-flash-sglang, summary)",
+      "compactionMs": 15138,
+      "failed": false,
+      "preContextTokens": 13019,
+      "estTokensAfter": 1231,
+      "summaryChars": 4886,
+      "usage": {
+        "input": 9738,
+        "output": 2639,
+        "cacheRead": 128,
+        "cacheWrite": 0,
+        "reasoning": 0,
+        "totalTokens": 12505,
+        "cost": {
+          "input": 0,
+          "output": 0,
+          "cacheRead": 0,
+          "cacheWrite": 0,
+          "total": 0
+        }
+      },
+      "byKind": {
+        "constraint": {
+          "total": 5,
+          "retained": 5
+        },
+        "path": {
+          "total": 7,
+          "retained": 7
+        },
+        "command": {
+          "total": 6,
+          "retained": 0
+        },
+        "error": {
+          "total": 2,
+          "retained": 0
+        }
+      },
+      "spanOnly": {
+        "constraint": {
+          "total": 5,
+          "retained": 5
+        },
+        "path": {
+          "total": 7,
+          "retained": 7
+        },
+        "command": {
+          "total": 6,
+          "retained": 0
+        },
+        "error": {
+          "total": 2,
+          "retained": 0
+        }
+      },
+      "qa": [
+        {
+          "question": "Earlier in this session some ingest job crashed. Reply with ONLY the FIRST fatal error code that appeared in the session (the FATAL 0x… token), nothing else. Do not use tools.",
+          "expected": "FATAL 0x96138540",
+          "ms": 2860.4507079999967,
+          "answer": "No FATAL 0x… token appears in the retained conversation history — the compaction summary contains no crash or fatal error code, so I can't report it without inventing one.",
+          "correct": false
+        },
+        {
+          "question": "Reply with ONLY the exact path we are never allowed to modify directly, nothing else. Do not use tools.",
+          "expected": "var/ingest-0ded.db",
+          "ms": 583.3389160000006,
+          "answer": "var/ingest-0ded.db",
+          "correct": true
+        },
+        {
+          "question": "Reply with ONLY the FIRST cache-flush command that was run earlier in the session (the full curl line), nothing else. Do not use tools.",
+          "expected": "curl -s http://edge-5f82.internal/v3/flush-4c46 | jq '.counts'",
+          "ms": 3806.5839590000032,
+          "answer": "curl -s edge-5f82.internal/v3/flush-4c46 | jq '.counts'",
+          "correct": false
+        }
+      ],
+      "cost": {
+        "compaction": {
+          "requests": 1,
+          "promptTokens": 9738,
+          "completionTokens": 2639,
+          "estimated": false
+        },
+        "qa": {
+          "promptTokens": 1741,
+          "completionTokens": 1239,
+          "estimated": false
+        }
+      }
+    },
+    {
+      "size": "large",
+      "arm": "fastjev",
+      "label": "fast-jev (tuned+tails) + route",
+      "compactionMs": 779,
+      "failed": false,
+      "preContextTokens": 24738,
+      "estTokensAfter": 5371,
+      "summaryChars": 21448,
+      "usage": {
+        "input": 8505,
+        "output": 1377,
+        "cacheRead": 0,
+        "cacheWrite": 0,
+        "totalTokens": 9882,
+        "cost": {
+          "input": 0,
+          "output": 0,
+          "cacheRead": 0,
+          "cacheWrite": 0,
+          "total": 0
+        }
+      },
+      "stats": {
+        "messagesBefore": 83,
+        "messagesAfter": 83,
+        "charsBefore": 100831,
+        "charsAfter": 17574,
+        "calls": 36,
+        "kept": 0,
+        "resultsDropped": 36,
+        "callsDropped": 0,
+        "pinned": 0,
+        "stateTokens": 4632,
+        "stateStage": "full",
+        "requests": 1,
+        "ms": 459
+      },
+      "byKind": {
+        "constraint": {
+          "total": 10,
+          "retained": 10
+        },
+        "command": {
+          "total": 12,
+          "retained": 12
+        },
+        "path": {
+          "total": 14,
+          "retained": 14
+        },
+        "error": {
+          "total": 3,
+          "retained": 2
+        }
+      },
+      "spanOnly": {
+        "constraint": {
+          "total": 10,
+          "retained": 10
+        },
+        "command": {
+          "total": 12,
+          "retained": 12
+        },
+        "path": {
+          "total": 14,
+          "retained": 14
+        },
+        "error": {
+          "total": 3,
+          "retained": 2
+        }
+      },
+      "qa": [
+        {
+          "question": "Earlier in this session some ingest job crashed. Reply with ONLY the FIRST fatal error code that appeared in the session (the FATAL 0x… token), nothing else. Do not use tools.",
+          "expected": "FATAL 0x631E122A",
+          "ms": 2055.7763750000013,
+          "answer": "FATAL 0x041F70E3",
+          "correct": false
+        },
+        {
+          "question": "Reply with ONLY the exact path we are never allowed to modify directly, nothing else. Do not use tools.",
+          "expected": "var/ingest-6523.db",
+          "ms": 484.31245800000033,
+          "answer": "var/ingest-6523.db",
+          "correct": true
+        },
+        {
+          "question": "Reply with ONLY the FIRST cache-flush command that was run earlier in the session (the full curl line), nothing else. Do not use tools.",
+          "expected": "curl -s http://edge-7557.internal/v7/flush-8b0f | jq '.counts'",
+          "ms": 698.2012919999979,
+          "answer": "curl -s http://edge-7557.internal/v7/flush-8b0f | jq '.counts'",
+          "correct": true
+        }
+      ],
+      "cost": {
+        "compaction": {
+          "requests": 1,
+          "promptTokens": 8505,
+          "completionTokens": 1377,
+          "estimated": false
+        },
+        "qa": {
+          "promptTokens": 7004,
+          "completionTokens": 391,
+          "estimated": false
+        }
+      }
+    },
+    {
+      "size": "large",
+      "arm": "builtin",
+      "label": "built-in (glm-5.3-flash-sglang, summary)",
+      "compactionMs": 21298,
+      "failed": false,
+      "preContextTokens": 24738,
+      "estTokensAfter": 1252,
+      "summaryChars": 4971,
+      "usage": {
+        "input": 18569,
+        "output": 3726,
+        "cacheRead": 192,
+        "cacheWrite": 0,
+        "reasoning": 0,
+        "totalTokens": 22487,
+        "cost": {
+          "input": 0,
+          "output": 0,
+          "cacheRead": 0,
+          "cacheWrite": 0,
+          "total": 0
+        }
+      },
+      "byKind": {
+        "constraint": {
+          "total": 10,
+          "retained": 10
+        },
+        "command": {
+          "total": 12,
+          "retained": 0
+        },
+        "path": {
+          "total": 14,
+          "retained": 14
+        },
+        "error": {
+          "total": 3,
+          "retained": 2
+        }
+      },
+      "spanOnly": {
+        "constraint": {
+          "total": 10,
+          "retained": 10
+        },
+        "command": {
+          "total": 12,
+          "retained": 0
+        },
+        "path": {
+          "total": 14,
+          "retained": 14
+        },
+        "error": {
+          "total": 3,
+          "retained": 2
+        }
+      },
+      "qa": [
+        {
+          "question": "Earlier in this session some ingest job crashed. Reply with ONLY the FIRST fatal error code that appeared in the session (the FATAL 0x… token), nothing else. Do not use tools.",
+          "expected": "FATAL 0x631E122A",
+          "ms": 1001.7231659999961,
+          "answer": "FATAL 0x041F70E3",
+          "correct": false
+        },
+        {
+          "question": "Reply with ONLY the exact path we are never allowed to modify directly, nothing else. Do not use tools.",
+          "expected": "var/ingest-6523.db",
+          "ms": 634.700582999998,
+          "answer": "var/ingest-6523.db",
+          "correct": true
+        },
+        {
+          "question": "Reply with ONLY the FIRST cache-flush command that was run earlier in the session (the full curl line), nothing else. Do not use tools.",
+          "expected": "curl -s http://edge-7557.internal/v7/flush-8b0f | jq '.counts'",
+          "ms": 7998.6524999999965,
+          "answer": "The exact first curl line wasn't retained in the compacted summary — only the shape (`curl -s http://edge-*.internal/vN/flush-* | jq '.counts'`) and the edge order (edge-7557 first) survived. The earliest fully recorded command is:\n\n`curl -s http://edge-cdb3.internal/v5/flush-c38e | jq '.counts'`",
+          "correct": false
+        }
+      ],
+      "cost": {
+        "compaction": {
+          "requests": 1,
+          "promptTokens": 18569,
+          "completionTokens": 3726,
+          "estimated": false
+        },
+        "qa": {
+          "promptTokens": 1955,
+          "completionTokens": 1555,
+          "estimated": false
+        }
+      }
+    }
+  ],
+  "jevLog": "/var/folders/vd/k2cw57g508qb_xx3dxvh9yqw0000gn/T/fast-jev-bench-Ycn6qI/jev-requests.json",
+  "model": "glm-5.3-flash-sglang",
+  "realJev": true,
+  "preserveCallInputs": true,
+  "errorTails": 1200
+}

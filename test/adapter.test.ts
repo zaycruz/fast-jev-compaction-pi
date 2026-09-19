@@ -259,6 +259,44 @@ describe("spanReductionRatio", () => {
   });
 });
 
+describe("routing: jev decides the path", () => {
+  const routingConfig = { routing: "jev" as const, routingThreshold: 0.5 };
+
+  it("high routing probability proceeds into scoring and records the route", async () => {
+    const seen: Seen[] = [];
+    const outcome = await runFor(span(), fakeJev((name) => (name === "route_compaction" ? 0.8 : 0.2), seen), {
+      config: { ...baseConfig, ...routingConfig },
+    });
+    expect(outcome.ok).toBe(true);
+    expect(outcome.route).toEqual({ route: "scored", probability: 0.8 });
+    const details = outcome.entry!.details[DETAILS_KEY] as FastJevDetails & { route?: unknown };
+    expect(details.route).toEqual({ route: "scored", probability: 0.8 });
+    expect(seen).toHaveLength(2); // router request, then the scoring batch
+    expect(seen[0]!.questions).toEqual(["route_compaction"]);
+  });
+
+  it("low routing probability declines without scoring", async () => {
+    const seen: Seen[] = [];
+    const outcome = await runFor(span(), fakeJev((name) => (name === "route_compaction" ? 0.3 : 0.9), seen), {
+      config: { ...baseConfig, ...routingConfig },
+    });
+    expect(outcome.ok).toBe(false);
+    expect(outcome.reason).toContain("routed this span to the native summary");
+    expect(outcome.route).toEqual({ route: "native", probability: 0.3 });
+    expect(seen).toHaveLength(1); // router ran, scoring never asked
+  });
+
+  it("no candidates short-circuits without asking the router", async () => {
+    const seen: Seen[] = [];
+    const outcome = await runFor([userMessage("just talk"), assistantMessage("sure")], fakeJev(() => 0.9, seen), {
+      config: { ...baseConfig, ...routingConfig },
+    });
+    expect(outcome.ok).toBe(false);
+    expect(outcome.route).toBeUndefined();
+    expect(seen).toHaveLength(0);
+  });
+});
+
 describe("runFastJevCompaction", () => {
   it("produces entry data, records usage, and stores state for the next compaction", async () => {
     const seen: Seen[] = [];
