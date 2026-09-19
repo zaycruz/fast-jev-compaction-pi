@@ -33,11 +33,12 @@ compaction stays continuous and lossless-with-deletions across sessions.
 ## Install
 
 ```sh
-# pin the release (recommended)
-pi install git:github.com/zaycruz/fast-jev-compaction-pi@v0.1.0
+# from the npm registry (pinned to the published version)
+pi install npm:fast-jev-compaction-pi@0.1.1
 
-# or track the default branch
-pi install git:github.com/zaycruz/fast-jev-compaction-pi
+# or from this repo
+pi install git:github.com/zaycruz/fast-jev-compaction-pi@v0.1.1
+pi install git:github.com/zaycruz/fast-jev-compaction-pi      # track main
 
 # project-only (written to .pi/settings.json, shared with your team)
 pi install -l git:github.com/zaycruz/fast-jev-compaction-pi
@@ -46,6 +47,7 @@ pi install -l git:github.com/zaycruz/fast-jev-compaction-pi
 Try it without installing (temp checkout, current run only):
 
 ```sh
+pi -e npm:fast-jev-compaction-pi
 pi -e git:github.com/zaycruz/fast-jev-compaction-pi
 ```
 

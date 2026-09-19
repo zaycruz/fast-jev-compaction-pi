@@ -1,7 +1,7 @@
 {
   "name": "fast-jev-compaction-pi",
-  "version": "0.1.0",
-  "description": "Verbatim Jev-guided context compaction for pi: replaces the built-in compaction summary with fast-jev-compaction decisions — stale tool calls/results are dropped or truncated, everything kept stays verbatim.",
+  "version": "0.1.1",
+  "description": "Verbatim Jev-guided context compaction for pi: replaces the built-in compaction summary with fast-jev-compaction decisions \u2014 stale tool calls/results are dropped or truncated, everything kept stays verbatim.",
   "type": "module",
   "license": "MIT",
   "keywords": [
@@ -19,7 +19,9 @@
   "homepage": "https://github.com/zaycruz/fast-jev-compaction-pi#readme",
   "bugs": "https://github.com/zaycruz/fast-jev-compaction-pi/issues",
   "pi": {
-    "extensions": ["./index.ts"]
+    "extensions": [
+      "./index.ts"
+    ]
   },
   "engines": {
     "node": ">=20.3"
@@ -36,5 +38,12 @@
     "@types/node": "^22.10.2",
     "typescript": "^5.7.2",
     "vitest": "^2.1.8"
-  }
+  },
+  "files": [
+    "index.ts",
+    "lib",
+    "vendor",
+    "LICENSE",
+    "README.md"
+  ]
 }
